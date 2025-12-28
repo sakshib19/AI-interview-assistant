@@ -1763,121 +1763,197 @@ def analyze_coding_behavior(playback: List[Dict[str, Any]]) -> str:
 
     return "\n".join(signals)
 def build_score_prompt(
-    question_text: str, 
-    ideal_outline: str, 
-    candidate_answer: str, 
+    question_text: str,
+    ideal_outline: str,
+    candidate_answer: str,
     context: Optional[Dict[str, Any]] = None,
     user_time_complexity: Optional[str] = None,
     user_space_complexity: Optional[str] = None
 ) -> str:
     """
-    CAMPUS-LEVEL MULTI-DIMENSIONAL SCORING
-    - Designed for Intern / Fresher / Placement interviews
-    - Harsh on bluffing, fair on partial understanding
-    - Supports TEXT, CODE, and SYSTEM DESIGN modes
+    CAMPUS-LEVEL MULTI-DIMENSIONAL SCORING PROMPT
+
+    Target Audience:
+    - Students / Freshers / Interns
+    - Placement & campus interviews
+
+    Philosophy:
+    - Honest partial understanding > perfect copied answers
+    - Harsh on bluffing, fair on learning intent
+    - Deterministic scoring (less LLM freedom)
     """
+
     context = context or {}
-    playback_summary =  " "
+
+    # -------------------- Context Extraction --------------------
+    question_type = context.get("question_type", "text")
     resume = context.get("resume", "")
     chunks = context.get("chunks", [])
-    playback_summary = ""
-    if context.get("playback_history"):
-        playback_summary = analyze_coding_behavior(context["playback_history"])
-    
-    question_type = context.get("question_type", "text")
     exec_result = context.get("code_execution_result", {})
-    
-    chunks_text = ""
+    playback_history = context.get("playback_history")
+
+    playback_summary = (
+        analyze_coding_behavior(playback_history)
+        if playback_history else "No behavioral data available."
+    )
+
+    reference_chunks = ""
     if chunks:
-        chunks_text = "\n".join([
+        reference_chunks = "\n".join(
             f"[Ref {c.get('doc_id')}:{c.get('chunk_id')}] {c.get('snippet','')[:300]}"
             for c in chunks[:3]
-        ])
-    
-    dimensions_text = "\n".join([
-        f"- **{name}** (weight: {info['weight']}): {info['description']}"
-        for name, info in SCORING_DIMENSIONS.items()
-    ])
+        )
 
-    # =========================================================
-    # 1. CODE SCORING (Campus-Friendly)
-    # =========================================================
+
+    dimensions_text = "\n".join(
+    f"- {name} (weight {info['weight']}): {info['description']}"
+    for name, info in SCORING_DIMENSIONS.items()
+)
+
+    # ============================================================
+    # CODING QUESTION PROMPT (STRICT CAMPUS LOGIC)
+    # ============================================================
     if question_type == "coding_challenge":
         passed = exec_result.get("passed", False)
-        output_log = exec_result.get("output", "No output captured")
+        output_log = exec_result.get("output", "No output")
         error_type = exec_result.get("error", "None")
-        complexity_check_block = ""
+
+        complexity_block = ""
         if user_time_complexity or user_space_complexity:
-            complexity_check_block = f"""
-        📜 COMPLEXITY AUDIT (CRITICAL):
-        The user CLAIMS:
-        - Time: {user_time_complexity if user_time_complexity else "NOT PROVIDED"}
-        - Space: {user_space_complexity if user_space_complexity else "NOT PROVIDED"}
+            complexity_block = f"""
+COMPLEXITY CLAIM (USER PROVIDED):
+- Time Complexity: {user_time_complexity or "NOT PROVIDED"}
+- Space Complexity: {user_space_complexity or "NOT PROVIDED"}
 
-        YOUR TASK:
-        1. Analyze the 'CANDIDATE ANSWER' code yourself. Determine the ACTUAL Time/Space complexity.
-        2. Compare ACTUAL vs CLAIMED.
-        3. SCORING RULES:
-           - If Claim is Missing: Deduct 0.10 from 'technical_accuracy'.
-           - If Claim is WRONG (e.g. claimed O(n) but code is O(n^2)): Deduct 0.20 from 'technical_accuracy'. Mark as Weak.
-           - If Claim is CORRECT: Award Bonus points.
-        """ 
-        system = f"""
-You are a CAMPUS PLACEMENT CODE EVALUATOR.
+COMPLEXITY AUDIT (MANDATORY & EXPLICIT):
 
-CANDIDATE LEVEL:
-- Student / Fresher / Intern
-- Expect correct logic and clarity, not extreme optimization
+You MUST output the following fields clearly:
 
-EXECUTION STATUS:
-- Passed: {passed}
+- actual_time_complexity
+- actual_space_complexity
+- claimed_time_complexity
+- claimed_space_complexity
+- complexity_verdict: MATCH | PARTIAL_MATCH | MISMATCH | NOT_PROVIDED
+
+RULES (NON-NEGOTIABLE):
+
+1. If claimed complexity is NOT PROVIDED:
+   - Deduct 0.10 from technical_accuracy
+   - Set complexity_verdict = NOT_PROVIDED
+
+2. If claimed complexity is PROVIDED but WRONG:
+   - Deduct 0.20 from technical_accuracy
+   - Set complexity_verdict = MISMATCH
+
+3. If Time is correct but Space is wrong:
+   - Deduct 0.10
+   - Set complexity_verdict = PARTIAL_MATCH
+
+4. If both Time and Space are correct:
+   - Award +0.05 bonus
+   - Set complexity_verdict = MATCH
+
+5. OPTIMIZATION CAP (HARD RULE):
+   - If ACTUAL time complexity is worse than optimal:
+     → overall_score MUST be clamped to ≤ 0.75
+     → This clamp OVERRIDES all bonuses
+
+You MUST state the actual complexities explicitly before scoring.
+
+"""
+
+        return f"""
+ROLE:
+You are a **Campus Placement Code Evaluator**.
+
+Candidate Profile:
+- Fresher / Student / Intern
+- Expect correctness and clarity, not elite optimization unless justified
+
+QUESTION:
+{question_text}
+
+IDEAL OUTLINE (FOR REFERENCE ONLY):
+{ideal_outline}
+
+CANDIDATE ANSWER:
+{candidate_answer}
+
+EXECUTION FACTS (DO NOT IGNORE):
+- Tests Passed: {passed}
 - Error Type: {error_type}
 
-
-EXECUTION LOG:
+EXECUTION OUTPUT (TRUNCATED):
 {output_log[:800]}
 
-{complexity_check_block}
-CODE SCORING RULES (IMPORTANT):
-1. IF TESTS FAILED:
-   - MAX SCORE = 0.5
-   - Minor syntax / edge-case miss → 0.35-0.45
-   - Logical misunderstanding → < 0.3
+{complexity_block}
 
-2. IF TESTS PASSED:
-   - BASE SCORE = 0.7
-   - +0.1 to +0.25 for:
-     • clean logic
-     • readable variable names
-     • handling edge cases
-     • correct use of data structures
-     • CORRECT COMPLEXITY ANALYSIS (if provided)
-   - Do NOT expect optimal Big-O unless resume claims it
-3. **OPTIMIZATION & QUALITY (Multipliers)**:
-   - **Brute Force vs Optimal**: If the problem can be solved in O(n) but user wrote O(n^2), score CANNOT exceed 0.75, even if tests pass.
-   - **Code Style**: Penalize for single-letter variables (except i, j, n), lack of comments, or deep nesting.
-   - **Edge Cases**: Did they handle empty inputs/nulls in the code logic?
-4. STRICT CHEATING CHECK:
-   - Hardcoded outputs → score = 0.0
-   - Printing expected values → score = 0.0
-🕵️ CODING BEHAVIOR ANALYSIS (AUTO-GENERATED):
+REFERENCE MATERIAL (if any):
+{reference_chunks}
+
+BEHAVIORAL SIGNALS:
 {playback_summary}
 
-SCORING ADJUSTMENTS BASED ON BEHAVIOR:
-1. If "MAJOR RED FLAG" (Paste) is present:
-   - Set 'confidence' to < 0.3
-   - Mention "Possible Plagiarism (Large Paste)" in 'red_flags_detected'
-   - Cap the overall score at 0.5 (Code is correct but process is invalid)
+--------------------------------------------------
+STRICT SCORING RULES (NON-NEGOTIABLE)
+--------------------------------------------------
 
-2. If "Good Process" (Active Debugging) is present:
-   - Boost 'practical_experience' score by +0.15
-   - Mention "Good iterative debugging" in feedback
-SCORING DIMENSIONS:
+1. IF TESTS FAILED:
+   - MAX overall score = 0.50
+   - Minor syntax / edge-case miss → 0.35–0.45
+   - Core logic misunderstanding → < 0.30
+
+2. IF TESTS PASSED:
+   - BASE SCORE = 0.70
+   - +0.05 to +0.25 ONLY for:
+     • clear logic
+     • meaningful variable names
+     • edge-case handling
+     • appropriate data structures
+     • correct complexity analysis
+
+3. OPTIMIZATION CAPS:
+   - If optimal is O(n) but solution is O(n²):
+     → overall score CANNOT exceed 0.75
+   - Passing brute force ≠ excellent solution
+
+4. CODE QUALITY PENALTIES:
+   - Single-letter variables (except i, j, n) → penalty
+   - Deep nesting without explanation → penalty
+   - No comments for non-trivial logic → penalty
+
+5. CHEATING / BLUFFING CHECK (ZERO TOLERANCE):
+   - Hardcoded outputs → overall_score = 0.0
+   - Printing expected answers → overall_score = 0.0
+
+6. BEHAVIOR-BASED ADJUSTMENTS:
+   - "MAJOR RED FLAG (Paste Detected)":
+       • confidence < 0.30
+       • add "Possible Plagiarism" to red_flags
+       • cap overall score at 0.50
+   - "Good Iterative Debugging":
+       • +0.15 practical_experience
+       • explicitly praise debugging process
+
+--------------------------------------------------
+SCORING DIMENSIONS (YOU MUST SCORE ALL):
 {dimensions_text}
 
-CAMPUS CONTEXT:
-- Partial but honest attempts > perfect but copied solutions
-- Penalize bluffing more than lack of knowledge
+CAMPUS CONTEXT REMINDERS:
+- Partial but genuine attempts > copied perfection
+- Penalize bluffing harder than ignorance
+
+FINAL TASK:
+1. Score EACH dimension strictly (0.0–1.0).
+2. Apply ALL caps, penalties, and bonuses.
+3. Provide:
+   - overall_score
+   - dimension_scores
+   - strengths
+   - concrete improvement advice
+   - red_flags_detected (if any)
+
+DO NOT be generous. Be fair, strict, and consistent.
 """
 
     # =========================================================
@@ -1888,42 +1964,125 @@ CAMPUS CONTEXT:
         wb_summary = context.get("whiteboard_text_summary", "No whiteboard usage detected")
         
         system = f"""
-You are a SENIOR SOFTWARE ARCHITECT evaluating a System Design interview.
+You are a SENIOR SOFTWARE ARCHITECT evaluating a SYSTEM DESIGN interview.
 
-CANDIDATE LEVEL: Intern / Entry Level
-- Expect basic component knowledge (Load Balancer, DB, API, Cache).
-- Do NOT expect complex distributed locking or CAP theorem nuance unless they bring it up.
+CANDIDATE LEVEL:
+- Intern / Entry-Level
+- Expect fundamentals, not distributed-systems mastery
 
-INPUT DATA:
-- **Verbal Explanation**: See 'CANDIDATE ANSWER' below.
-- **Whiteboard Text Labels**: {wb_summary}
+INPUTS:
+- Verbal Explanation → see CANDIDATE ANSWER
+- Whiteboard Text Labels → {wb_summary}
 
-🕵️ WHITEBOARD LOGIC CHECK:
-1. **Completeness**: Does the whiteboard list contain the 'Holy Trinity' of Web Apps?
-   - Frontend/Client
-   - Backend/API/Server
-   - Database/Storage
-   *If any of these 3 are missing from the text labels, CAP score at 0.6.*
+--------------------------------------------------
+MANDATORY WHITEBOARD AUDIT (YOU MUST DO THIS)
+--------------------------------------------------
 
-2. **Specifics vs Generics**:
-   - "Database" = Weak
-   - "PostgreSQL" / "MongoDB" = Strong
-   - "Cache" = Weak
-   - "Redis" / "CDN" = Strong
+Step 1: COMPONENT COMPLETENESS CHECK
+Check presence of ALL THREE:
+- Client / Frontend
+- Backend / API / Server
+- Database / Storage
 
-3. **Scalability Indicators**:
-   - Look for keywords: "Load Balancer", "Kafka", "Queue", "Sharding", "Replica".
-   - If prompt asked for scaling and these are missing -> Deduct 'depth_of_understanding'.
+Output explicitly:
+- components_present: [list]
+- components_missing: [list]
 
-SCORING CRITERIA:
-- **0.0 - 0.4 (Fail)**: Whiteboard empty or completely disconnected from verbal answer.
-- **0.5 - 0.6 (Weak)**: Generic boxes ("App", "DB") without specific technologies.
-- **0.7 - 0.8 (Pass)**: Standard architecture present. Components connect logically.
-- **0.9 - 1.0 (Strong)**: Specific tech choices (e.g., "S3 for images"), Scalability components (LBs, Queues), and clear data flow.
-SCORING DIMENSIONS:
+RULE:
+- If ANY of the three are missing:
+  → architecture_completeness MUST be ≤ 0.6
+  → overall_score MUST be capped at 0.6
+
+--------------------------------------------------
+Step 2: SPECIFICITY CHECK
+--------------------------------------------------
+Classify components:
+
+GENERIC (WEAK):
+- "App", "Backend", "Database", "Cache"
+
+SPECIFIC (STRONG):
+- "React", "Spring Boot", "PostgreSQL", "MongoDB"
+- "Redis", "S3", "CloudFront"
+
+RULES:
+- Mostly generic → depth_of_understanding ≤ 0.6
+- Mix of generic + specific → 0.6-0.75
+- Mostly specific → 0.75+
+
+--------------------------------------------------
+Step 3: SCALABILITY SIGNAL CHECK
+--------------------------------------------------
+Look for ANY of:
+- Load Balancer
+- Queue / Kafka
+- Sharding
+- Replicas / Read replicas
+- CDN
+
+RULE:
+- If the QUESTION asks about scale AND none appear:
+  → Deduct at least 0.15 from depth_of_understanding
+
+--------------------------------------------------
+Step 4: WHITEBOARD ↔ VERBAL ALIGNMENT
+--------------------------------------------------
+Evaluate consistency between:
+- What is drawn
+- What is verbally explained
+
+RULES:
+- Diagram contradicts explanation → clarity ≤ 0.5
+- Diagram unused / ignored → mention as red flag
+- Diagram actively referenced → boost clarity (+0.1)
+
+--------------------------------------------------
+SCORING BANDS (HARD GUIDANCE)
+--------------------------------------------------
+
+0.0-0.4 (FAIL):
+- No whiteboard usage OR
+- Diagram unrelated to explanation
+
+0.5-0.6 (WEAK):
+- Generic boxes only
+- Missing core components
+
+0.7-0.8 (PASS):
+- Complete basic architecture
+- Logical data flow
+- Some specificity
+
+0.9-1.0 (STRONG):
+- Clear data flow
+- Specific tech choices
+- Scalability awareness
+
+--------------------------------------------------
+SCORING DIMENSIONS (YOU MUST SCORE ALL):
 {dimensions_text}
-OUTPUT GUIDANCE:
-- If they drew nothing, mention "Candidate failed to utilize whiteboard" in the rationale.
+
+--------------------------------------------------
+FINAL OUTPUT REQUIREMENTS (MANDATORY)
+--------------------------------------------------
+
+You MUST include:
+- components_present
+- components_missing
+- specificity_level: LOW | MEDIUM | HIGH
+- scalability_signals_found: [list]
+- whiteboard_alignment: GOOD | PARTIAL | POOR
+- dimension_scores
+- overall_score (respect ALL caps)
+- strengths
+- concrete improvements
+- red_flags_detected (if any)
+
+IMPORTANT:
+- If whiteboard is empty → explicitly state:
+  "Candidate failed to utilize whiteboard"
+
+Be fair, structured, and STRICT.
 """
         
     # =========================================================
@@ -2019,7 +2178,7 @@ RESUME CONTEXT:
 {resume[:600]}
 
 REFERENCE MATERIAL:
-{chunks_text}
+{reference_chunks}
 
 INSTRUCTIONS:
 1. Score using campus-level expectations
@@ -2093,34 +2252,36 @@ Score: {score} ({verdict})
     return prompt.strip()
 def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, Any]:
     """
-    Executes code safely using the Piston Public API (or compatible runner).
-    Returns a dict with detailed fields for debugging:
-      {
+    Execute code safely using Piston API.
+
+    Returns:
+    {
         "success": bool,
-        "output": "stdout (trimmed) or combined stdout/stderr",
-        "error_type": "API Error|Compilation Error|Runtime Error|Network Error|Config Error",
-        "status_code": int|None,
-        "raw": raw_response_object_or_text,
-        "run_stage": run_stage_dict_or_none,
-        "compile_stage": compile_stage_dict_or_none
-      }
+        "output": str,
+        "error_type": str | None,
+        "status_code": int | None,
+        "raw": dict | str | None,
+        "run_stage": dict | None,
+        "compile_stage": dict | None
+    }
     """
-    # Map simple names to Piston's specific language IDs or aliases
-    lang_map = {
+
+    import time
+    import requests
+
+    # ============================================================
+    # 1. Supported Language Map (STRICT)
+    # ============================================================
+    LANG_CONFIG = {
         "python": {"language": "python", "version": "*"},
-        "javascript": {"language": "javascript", "version": "*"},
-        "node": {"language": "javascript", "version": "*"},
-        "java": {"language": "java", "version": "*"},
-        "cpp": {"language": "c++", "version": "*"},
-        "c": {"language": "c", "version": "*"},
-        "go": {"language": "go", "version": "*"},
+        "cpp": {"language": "c++", "version": "*"}
     }
 
-    config = lang_map.get(language.lower())
+    config = LANG_CONFIG.get(language.lower())
     if not config:
         return {
             "success": False,
-            "output": f"Language '{language}' not supported. Try: python, javascript, java, cpp.",
+            "output": f"Language '{language}' not supported. Only Python and C++ are allowed.",
             "error_type": "Config Error",
             "status_code": None,
             "raw": None,
@@ -2128,147 +2289,179 @@ def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, 
             "compile_stage": None
         }
 
+    # ============================================================
+    # 2. Build Payload
+    # ============================================================
     payload = {
         "language": config["language"],
         "version": config["version"],
         "files": [{"content": code}],
-        "stdin": stdin or ""# ms (20s)
+        "stdin": stdin or ""
     }
 
+    # ============================================================
+    # 3. Retry Logic (Network Safety)
+    # ============================================================
     max_attempts = 3
-    delay = 0.5
-    last_exc = None
+    backoff = 0.5
+    last_exception = None
+
     for attempt in range(1, max_attempts + 1):
         try:
-            resp = requests.post(PISTON_API_URL, json=payload, timeout=30)
+            resp = requests.post(
+                PISTON_API_URL,
+                json=payload,
+                timeout=30
+            )
         except Exception as e:
-            logger.warning("Piston request attempt %d failed: %s", attempt, e)
-            last_exc = e
-            time.sleep(delay)
-            delay *= 2
+            logger.warning(
+                "Piston request failed (attempt %d/%d): %s",
+                attempt, max_attempts, e
+            )
+            last_exception = e
+            time.sleep(backoff)
+            backoff *= 2
             continue
 
-        status = getattr(resp, "status_code", None)
-        raw_text = None
+        status_code = resp.status_code
+
+        # ========================================================
+        # 4. Parse Response
+        # ========================================================
         try:
             raw = resp.json()
-            raw_text = raw
         except Exception:
-            # not JSON
-            raw_text = resp.text if hasattr(resp, "text") else str(resp)
+            raw = resp.text
 
-        # Non-200 -> bubble with debug
-        if status != 200:
-            logger.error("Piston API returned status %s: %s", status, raw_text)
+        if status_code != 200:
+            logger.error("Piston API error %s: %s", status_code, raw)
             return {
                 "success": False,
-                "output": "Sandbox API Unavailable",
+                "output": "Sandbox execution service unavailable.",
                 "error_type": "API Error",
-                "status_code": status,
-                "raw": raw_text,
+                "status_code": status_code,
+                "raw": raw,
                 "run_stage": None,
                 "compile_stage": None
             }
 
-        # At this point we have a 200 and raw (maybe dict)
-        data = raw if isinstance(raw_text, dict) else None
-
-        # Defensive extraction of run/compile stages across different Piston-like shapes
-        run_stage = None
-        compile_stage = None
-        # Typical format: {"run": {...}, "compile": {...}}
-        if isinstance(data, dict):
-            run_stage = data.get("run") or data.get("execution") or data.get("result") or {}
-            compile_stage = data.get("compile") or data.get("compile_result") or {}
-        else:
-            # If data isn't a dict (rare), return raw text
+        if not isinstance(raw, dict):
             return {
                 "success": False,
-                "output": raw_text if isinstance(raw_text, str) else str(raw_text),
+                "output": str(raw),
                 "error_type": "API Error",
-                "status_code": status,
-                "raw": raw_text,
+                "status_code": status_code,
+                "raw": raw,
                 "run_stage": None,
                 "compile_stage": None
             }
 
-        # Normalize run_stage/compile_stage to dicts
-        run_stage = run_stage or {}
+        # ========================================================
+        # 5. Extract Compile & Run Stages (Defensive)
+        # ========================================================
+        compile_stage = (
+            raw.get("compile")
+            or raw.get("compile_result")
+            or {}
+        )
+
+        run_stage = (
+            raw.get("run")
+            or raw.get("execution")
+            or raw.get("result")
+            or {}
+        )
+
         compile_stage = compile_stage or {}
+        run_stage = run_stage or {}
 
-        # If compile stage indicates compilation error
-        comp_code = compile_stage.get("code") if isinstance(compile_stage, dict) else None
-        if comp_code is not None and comp_code != 0:
-            out = (compile_stage.get("stderr") or compile_stage.get("stdout") or "").strip()
+        # ========================================================
+        # 6. Compilation Error Handling
+        # ========================================================
+        compile_code = compile_stage.get("code")
+        if compile_code is not None and compile_code != 0:
+            output = (
+                compile_stage.get("stderr")
+                or compile_stage.get("stdout")
+                or "Compilation failed"
+            ).strip()
+
             return {
                 "success": False,
-                "output": out,
+                "output": output,
                 "error_type": "Compilation Error",
-                "status_code": status,
-                "raw": data,
+                "status_code": status_code,
+                "raw": raw,
                 "run_stage": run_stage,
                 "compile_stage": compile_stage
             }
 
-        # If run stage indicates runtime error (non-zero exit code)
-        run_code = run_stage.get("code") if isinstance(run_stage, dict) else None
-        stdout = run_stage.get("stdout") if isinstance(run_stage, dict) else None
-        stderr = run_stage.get("stderr") if isinstance(run_stage, dict) else None
+        # ========================================================
+        # 7. Runtime Error Handling
+        # ========================================================
+        run_code = run_stage.get("code")
+        stdout = run_stage.get("stdout", "")
+        stderr = run_stage.get("stderr", "")
 
-        # prefer combined stderr if non-empty and run failed
         if run_code is not None and run_code != 0:
-            combined = ""
-            if stderr:
-                combined = stderr.strip()
-            elif stdout:
-                combined = stdout.strip()
-            else:
-                combined = f"Non-zero exit code: {run_code}"
+            output = (
+                stderr.strip()
+                if stderr else stdout.strip()
+                if stdout else f"Non-zero exit code: {run_code}"
+            )
+
             return {
                 "success": False,
-                "output": combined,
+                "output": output,
                 "error_type": "Runtime Error",
-                "status_code": status,
-                "raw": data,
+                "status_code": status_code,
+                "raw": raw,
                 "run_stage": run_stage,
                 "compile_stage": compile_stage
             }
 
-        # Success path: prefer stdout then fallback to run_stage 'output' or 'message'
-        out_text = ""
-        if stdout is not None and str(stdout).strip() != "":
-            out_text = str(stdout).strip()
+        # ========================================================
+        # 8. Success Path (Prefer stdout)
+        # ========================================================
+        output = ""
+        if stdout and stdout.strip():
+            output = stdout.strip()
         else:
-            # some runners use other keys
-            possible = []
-            if isinstance(run_stage, dict):
-                for k in ("output", "message", "result", "stdout"):
-                    v = run_stage.get(k)
-                    if v:
-                        possible.append(str(v).strip())
-            out_text = possible[0] if possible else ""
+            for key in ("output", "message", "result"):
+                val = run_stage.get(key)
+                if val:
+                    output = str(val).strip()
+                    break
 
         return {
             "success": True,
-            "output": out_text,
+            "output": output,
             "error_type": None,
-            "status_code": status,
-            "raw": data,
+            "status_code": status_code,
+            "raw": raw,
             "run_stage": run_stage,
             "compile_stage": compile_stage
         }
 
-    # If we exhausted attempts
-    logger.error("Piston execution failed after %d attempts: %s", max_attempts, last_exc)
+    # ============================================================
+    # 9. Exhausted Retries
+    # ============================================================
+    logger.error(
+        "Piston execution failed after %d attempts: %s",
+        max_attempts,
+        last_exception
+    )
+
     return {
         "success": False,
-        "output": str(last_exc) if last_exc else "Unknown network error",
+        "output": str(last_exception) if last_exception else "Network error",
         "error_type": "Network Error",
         "status_code": None,
         "raw": None,
         "run_stage": None,
         "compile_stage": None
     }
+
 def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
     """Make hiring decision with performance-based termination"""
     
@@ -3142,7 +3335,17 @@ def generate_question(req: GenerateQuestionRequest):
     # =====================================================
     # 2. DETERMINE REQUIRED TYPE (ONCE)
     # =====================================================
+    is_probe = payload.get("mode") == "probe"
+    last_question_type = None
+    if history:
+        last_question_type = history[-1].get("type")
+
     required_type = state.next_question_type()
+
+# 🔥 PROBE TYPE INHERITANCE (CRITICAL FIX)
+    if is_probe and last_question_type == "coding_challenge":
+        required_type = "coding_challenge"
+
     logger.info(f"🎯 Required question type: {required_type}")
 
     # =====================================================
@@ -3332,136 +3535,157 @@ def generate_question(req: GenerateQuestionRequest):
 @app.post("/generate_roadmap")
 def generate_roadmap(req: RoadmapRequest):
     """
-    Generates a dynamic 4-week study plan with Hybrid Logic.
-    - Many Weaknesses -> Full Recovery Plan
-    - Few Weaknesses -> Hybrid Plan (Week 1 Fix + Weeks 2-4 Mastery)
-    - No Weaknesses -> Full Advanced Mastery Plan
-    - INCORPORATES SPECIFIC FEEDBACK FROM HISTORY
+    Generates a personalized 4-week roadmap using smart hybrid logic
+    driven by actual interview feedback.
     """
-    history = req.question_history
-    
+
+    # -------------------- 1. Resolve History --------------------
+    history = req.question_history or []
+    if not history and req.session_id in INTERVIEW_STATE:
+        history = INTERVIEW_STATE[req.session_id].history
+
     if not history:
-        if req.session_id in INTERVIEW_STATE:
-            history = INTERVIEW_STATE[req.session_id].history
+        logger.warning(f"No history found for session {req.session_id}")
+        return {
+            "success": False,
+            "error": "Insufficient data. Please answer at least 3 questions to generate a roadmap."
+        }
+
+    # -------------------- 2. Analyze Performance --------------------
+    weak_areas = {}     # { skill_type: [ {question, score, feedback} ] }
+    strong_areas = []   # list[str]
+    skill_scores = {}   # { skill_type: [scores] }
+
+    for h in history:
+        # Normalize skill type
+        q_type = (
+            h.get("type")
+            or h.get("metadata", {}).get("type")
+            or "conceptual"
+        )
+        if q_type == "code":
+            q_type = "coding_challenge"
+
+        # Normalize score
+        raw_score = h.get("score", 0)
+        if isinstance(raw_score, dict):
+            raw_score = raw_score.get("overall_score", 0)
+
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            score = 0.0
+
+        skill_scores.setdefault(q_type, []).append(score)
+
+        # Extract question + feedback
+        question = safe_truncate(h.get("question", ""), 200)
+
+        feedback = (
+            h.get("feedback")
+            or h.get("result", {}).get("improvement")
+            or h.get("result", {}).get("rationale")
+            or "No specific feedback provided."
+        )
+        feedback = safe_truncate(feedback, 300)
+
+        if score < 0.65:
+            weak_areas.setdefault(q_type, []).append({
+                "question": question,
+                "score": round(score, 2),
+                "feedback": feedback
+            })
         else:
-            logger.warning(f"No history found for {req.session_id}, generating generic roadmap")
-            history = []
+            strong_areas.append(question)
 
-    # 1. Analyze Performance
-    weak_areas = {}   # Score < 0.65
-    strong_areas = [] # Score >= 0.65
-    skill_scores = {}
-    
-    if history:
-        for h in history:
-            q_type = h.get("type") or h.get("metadata", {}).get("type") or "conceptual"
-            if q_type == "code": q_type = "coding_challenge"
-            
-            try:
-                raw_score = h.get("score")
-                if isinstance(raw_score, dict): raw_score = raw_score.get("overall_score")
-                score = float(raw_score) if raw_score is not None else 0.0
-            except:
-                score = 0.0
-
-            if q_type not in skill_scores: skill_scores[q_type] = []
-            skill_scores[q_type].append(score)
-            
-            q_text = safe_truncate(h.get("question", ""), 200)
-            
-            # Extract feedback (improvement or rationale)
-            raw_feedback = h.get("feedback") or h.get("result", {}).get("improvement") or h.get("result", {}).get("rationale") or "No specific feedback."
-            clean_feedback = safe_truncate(raw_feedback, 300)
-
-            if score < 0.65:
-                if q_type not in weak_areas: weak_areas[q_type] = []
-                weak_areas[q_type].append({
-                    "question": q_text,
-                    "score": score,
-                    "feedback": clean_feedback
-                })
-            else:
-                strong_areas.append(q_text)
-
+    # Compute skill averages
     skill_averages = {
-        k: round(sum(v) / len(v), 2) for k, v in skill_scores.items()
+        k: round(sum(v) / len(v), 2)
+        for k, v in skill_scores.items()
+        if v
     }
 
-    # 2. Determine Strategy (SMART HYBRID LOGIC)
+    # -------------------- 3. Decide Strategy --------------------
     weak_count = sum(len(v) for v in weak_areas.values())
-    
-    # Flatten lists for context, including the FEEDBACK
+
     weak_context = [
-        f"Question: {item['question']}\n   Feedback to Fix: {item['feedback']}" 
-        for sublist in weak_areas.values() for item in sublist
+        f"Question: {w['question']}\nFeedback to Fix: {w['feedback']}"
+        for group in weak_areas.values()
+        for w in group
     ]
-    strong_context = strong_areas[:5]
+
+    strong_context = strong_areas[:5]  # cap to avoid prompt bloat
 
     if weak_count == 0:
-        # Scenario A: Rock Star (100% Mastery)
         plan_type = "ADVANCED MASTERY PLAN"
         context_data = {"strengths": strong_context}
         task_instruction = (
-            "The candidate PASSED all questions. Create an ADVANCED plan to take their existing skills "
-            "(listed in 'strengths') to an Expert/Architect level. Do NOT suggest basics."
-        )
-    elif weak_count <= 2:
-        # Scenario B: Hybrid (25% Fix, 75% Mastery)
-        plan_type = "HYBRID ACCELERATION PLAN"
-        context_data = {"gaps_to_fix": weak_context, "strengths_to_advance": strong_context}
-        task_instruction = (
-            "The candidate is STRONG but has minor gaps. "
-            "**Week 1 MUST focus strictly on fixing the specific 'Feedback to Fix' mentioned in 'gaps_to_fix'.** "
-            "**Weeks 2-4 MUST focus on advancing their 'strengths_to_advance' to an expert level.** "
-            "Do NOT spend 4 weeks on the small gaps."
-        )
-    else:
-        # Scenario C: Struggling (100% Recovery)
-        plan_type = "RECOVERY PLAN"
-        context_data = {"critical_failures": weak_context}
-        task_instruction = (
-            "The candidate struggled significantly. Create a strict plan to fix these specific knowledge gaps. "
-            "The plan must explicitly address the 'Feedback to Fix' provided for each failure."
+            "The candidate showed no weaknesses. Create an ADVANCED plan that pushes "
+            "their existing strengths to Architect / Expert level. "
+            "Avoid fundamentals or revision content."
         )
 
-    # 3. Build AI Prompt
+    elif weak_count <= 2:
+        plan_type = "HYBRID ACCELERATION PLAN"
+        context_data = {
+            "gaps_to_fix": weak_context,
+            "strengths_to_advance": strong_context
+        }
+        task_instruction = (
+            "The candidate is strong with minor gaps.\n"
+            "- Week 1 MUST focus strictly on fixing the listed feedback in 'gaps_to_fix'.\n"
+            "- Weeks 2–4 MUST advance 'strengths_to_advance' to expert level.\n"
+            "Do NOT over-focus on the gaps."
+        )
+
+    else:
+        plan_type = "RECOVERY PLAN"
+        context_data = {"critical_gaps": weak_context}
+        task_instruction = (
+            "The candidate struggled significantly.\n"
+            "Create a structured recovery plan that explicitly addresses EACH "
+            "'Feedback to Fix' mentioned."
+        )
+
+    # -------------------- 4. Build Prompt --------------------
     prompt = f"""
 You are a Senior Technical Mentor creating a personalized 4-week {plan_type}.
 
 PERFORMANCE METRICS:
 {json.dumps(skill_averages, indent=2)}
 
-CONTEXT DATA (Includes specific feedback from the interview):
+INTERVIEW CONTEXT (includes exact feedback):
 {json.dumps(context_data, indent=2)}
 
 TASK:
 {task_instruction}
 
-⚠️ CRITICAL RULES:
-1. **Feedback-Driven**: If the feedback says "You forgot edge cases", the plan MUST include a day for "Testing Edge Cases".
-2. **Context-Driven**: Plans must be about the specific technologies mentioned (e.g., Python, Trading, React).
-3. **Specific Resources**: Suggest real-world resources (e.g., "Designing Data-Intensive Applications", "Python GIL Source Code").
+CRITICAL RULES:
+1. Feedback-Driven: Every weakness must map to at least one concrete activity.
+2. Context-Aware: Use the actual technologies mentioned in the interview.
+3. Realistic Scope: Design, analyze, and improve — do not promise massive builds.
+4. Specific Resources: Mention real books, articles, docs, or talks.
 
-OUTPUT JSON FORMAT:
+OUTPUT JSON ONLY (no markdown, no explanations):
 {{
-  "overall_assessment": "String summarizing performance and the specific goal of this plan.",
+  "overall_assessment": "Concise and honest evaluation",
   "skill_radar": {{
-    "dsa": 0.0-1.0,
-    "system_design": 0.0-1.0,
-    "communication": 0.0-1.0
+    "dsa": 0.0,
+    "system_design": 0.0,
+    "communication": 0.0
   }},
   "weekly_plan": [
     {{
       "week": 1,
-      "theme": "Specific Topic",
+      "theme": "Focused topic",
       "goals": ["Goal 1", "Goal 2"],
       "daily_tasks": [
         {{
           "day": "Day 1-2",
-          "activity": "Detailed study activity...",
+          "activity": "Concrete learning activity",
           "resources": [
-              {{"type": "video", "title": "Specific Video Title"}},
-              {{"type": "article", "title": "Specific Article Title"}}
+            {{ "type": "video", "title": "Exact resource title" }},
+            {{ "type": "article", "title": "Exact resource title" }}
           ]
         }}
       ]
@@ -3470,44 +3694,47 @@ OUTPUT JSON FORMAT:
 }}
 """
 
-    # 4. Call LLM
+    # -------------------- 5. Call LLM --------------------
     try:
         resp = llm_call(prompt, temperature=0.4, max_tokens=2500)
-        
-        if not resp.get("ok"):
-            raise HTTPException(status_code=502, detail="AI roadmap generation failed")
-        
+
+        if not resp or not resp.get("raw"):
+            raise HTTPException(status_code=502, detail="Empty AI response")
+
         roadmap = extract_json_from_text(resp["raw"])
-        
         if not roadmap:
-            raise HTTPException(status_code=500, detail="Failed to parse roadmap JSON")
-        
-        # 5. Add URLs
+            raise HTTPException(status_code=500, detail="Invalid roadmap JSON")
+
+        # -------------------- 6. Enrich Resources --------------------
         for week in roadmap.get("weekly_plan", []):
             for task in week.get("daily_tasks", []):
                 for res in task.get("resources", []):
                     title = res.get("title", "")
-                    if res.get("type") == "video":
-                        res["url"] = f"https://www.youtube.com/results?search_query={title.replace(' ', '+')}"
-                    else:
-                        res["url"] = f"https://www.google.com/search?q={title.replace(' ', '+')}"
+                    q = title.replace(" ", "+")
+                    res["url"] = (
+                        f"https://www.youtube.com/results?search_query={q}"
+                        if res.get("type") == "video"
+                        else f"https://www.google.com/search?q={q}"
+                    )
 
         return {
             "success": True,
-            "roadmap": roadmap,
+            "plan_type": plan_type,
             "metrics": {
                 "skill_averages": skill_averages,
                 "weak_count": weak_count
-            }
+            },
+            "roadmap": roadmap
         }
 
     except Exception as e:
-        logger.exception("Roadmap generation error")
+        logger.exception("Roadmap generation failed")
         return {
-            "success": False, 
+            "success": False,
             "error": str(e),
-            "roadmap": None 
+            "roadmap": None
         }
+
 @app.post("/run_code")
 def run_code(req: CodeSubmissionRequest):
     import json, re

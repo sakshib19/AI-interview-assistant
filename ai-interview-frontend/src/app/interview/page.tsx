@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import ResumeUploader from "../resume/page";
 import { useInterview } from "../hooks/useInterview";
 import { useAuth } from "../context/AuthContext";
+import { useWebSpeech } from "../hooks/useWebSpeech";
 import Link from "next/link";
 import jsPDF from "jspdf";
 import "@excalidraw/excalidraw/index.css";
@@ -35,7 +36,16 @@ import {
   Code,
   Layout,
   ExternalLink,
-  Zap   // <--- NEW // Added for loading indicator
+  Zap ,
+  Mic,
+  Square,
+  Keyboard,
+  Edit3,
+  Volume2, 
+  VolumeX,
+  Pause,
+  Settings
+    // <--- NEW // Added for loading indicator
 } from "lucide-react";
 
 /* -------------------------
@@ -163,15 +173,47 @@ const ExcalidrawWrapper = dynamic(
 /* -------------------------
     Main component
     ------------------------- */
-const RoadmapDisplay = ({ plan }: { plan: any }) => {
+/* -------------------------
+   Roadmap Display Component (Dynamic Title & Colors)
+   ------------------------- */
+const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
   if (!plan) return null;
 
   // 🔍 DEBUG: Log exactly what the frontend is seeing
-  console.log("🔍 Roadmap Data Received:", plan);
+  console.log("🔍 Roadmap Data:", plan);
+
+  // 1. Dynamic Styling based on Plan Type
+  const getTheme = () => {
+    const t = (title || "").toLowerCase();
+    if (t.includes("advanced") || t.includes("mastery")) {
+      return {
+        bg: "bg-gradient-to-r from-amber-500 to-orange-600",
+        icon: "text-amber-200",
+        border: "border-amber-100",
+        badge: "bg-amber-100 text-amber-800"
+      };
+    }
+    if (t.includes("recovery") || t.includes("foundations")) {
+      return {
+        bg: "bg-gradient-to-r from-blue-600 to-indigo-600",
+        icon: "text-blue-200",
+        border: "border-blue-100",
+        badge: "bg-blue-100 text-blue-800"
+      };
+    }
+    // Default / Hybrid
+    return {
+      bg: "bg-gradient-to-r from-emerald-600 to-teal-600",
+      icon: "text-emerald-200",
+      border: "border-emerald-100",
+      badge: "bg-emerald-100 text-emerald-800"
+    };
+  };
+
+  const theme = getTheme();
+  const displayTitle = title || "Personalized Study Roadmap";
 
   // 🛠️ HELPER: Recursively find the 'weekly_plan' array
-  // This fixes issues where AI returns { roadmap: { weekly_plan: ... } }
-  // or { WeeklyPlan: ... } or other variations.
   const findSchedule = (obj: any): any[] => {
     if (!obj || typeof obj !== 'object') return [];
     
@@ -182,32 +224,31 @@ const RoadmapDisplay = ({ plan }: { plan: any }) => {
       return obj[planKey];
     }
 
-    // 2. Check for 'roadmap' wrapper
-    if (obj.roadmap && typeof obj.roadmap === 'object') {
-        return findSchedule(obj.roadmap);
-    }
+    // 2. Check for 'roadmap' wrapper or common LLM nesting
+    if (obj.roadmap && typeof obj.roadmap === 'object') return findSchedule(obj.roadmap);
+    if (obj.Roadmap && typeof obj.Roadmap === 'object') return findSchedule(obj.Roadmap);
+    if (obj.plan && typeof obj.plan === 'object') return findSchedule(obj.plan);
 
     return [];
   };
- 
+  
   const schedule = findSchedule(plan);
   
-  // Extract other fields safely
-  const assessment = plan.overall_assessment || plan.roadmap?.overall_assessment || plan.assessment || "Your personalized recovery plan.";
+  // Extract fields safely
+  const assessment = plan.overall_assessment || plan.roadmap?.overall_assessment || plan.assessment || "Here is your personalized growth plan based on the interview results.";
   const radar = plan.skill_radar || plan.roadmap?.skill_radar || plan.skills || null;
-  const projects = plan.recommended_projects || plan.roadmap?.recommended_projects || [];
 
   return (
     <div className="mt-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
-      <div className="bg-white rounded-3xl border-2 border-indigo-100 shadow-xl overflow-hidden">
+      <div className={`bg-white rounded-3xl border-2 ${theme.border} shadow-xl overflow-hidden`}>
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-blue-600 p-8 text-white">
-          <div className="flex items-center gap-3 mb-2">
-            <Map className="text-indigo-200" size={28} />
-            <h2 className="text-2xl font-black uppercase tracking-wide">4-Week Recovery Plan</h2>
+        <div className={`${theme.bg} p-8 text-white`}>
+          <div className="flex items-center gap-3 mb-3">
+            <Map className={theme.icon} size={32} />
+            <h2 className="text-3xl font-black uppercase tracking-wide shadow-sm">{displayTitle}</h2>
           </div>
-          <p className="text-indigo-100 text-lg font-medium leading-relaxed max-w-3xl">
+          <p className="text-white/90 text-lg font-medium leading-relaxed max-w-3xl">
             {assessment}
           </p>
         </div>
@@ -228,7 +269,7 @@ const RoadmapDisplay = ({ plan }: { plan: any }) => {
                     </div>
                     <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
                       <div 
-                        className={`h-full rounded-full ${score > 0.7 ? 'bg-emerald-500' : score > 0.4 ? 'bg-amber-500' : 'bg-rose-500'}`} 
+                        className={`h-full rounded-full ${Number(score) > 0.7 ? 'bg-emerald-500' : Number(score) > 0.4 ? 'bg-amber-500' : 'bg-rose-500'}`} 
                         style={{ width: `${Number(score) * 100}%` }} 
                       />
                     </div>
@@ -241,7 +282,7 @@ const RoadmapDisplay = ({ plan }: { plan: any }) => {
           {/* Weekly Timeline */}
           <div className="space-y-8">
             <h3 className="font-bold text-xl text-slate-900 flex items-center gap-2 border-b pb-4">
-              <Calendar size={20} className="text-indigo-600" /> Actionable Schedule
+              <Calendar size={20} className="text-slate-600" /> Actionable Schedule
             </h3>
             
             {schedule.length === 0 ? (
@@ -250,16 +291,17 @@ const RoadmapDisplay = ({ plan }: { plan: any }) => {
                  <p className="text-xs mt-2 text-slate-400">(Debug: Check console for 'Roadmap Data Received')</p>
                </div>
             ) : (
-              <div className="relative border-l-2 border-indigo-100 ml-3 space-y-8 pb-4">
+              <div className="relative border-l-2 border-slate-200 ml-3 space-y-12 pb-4">
                 {schedule.map((week: any, wIdx: number) => (
                   <div key={wIdx} className="relative pl-8">
-                    <div className="absolute -left-[9px] top-0 w-5 h-5 bg-indigo-600 rounded-full border-4 border-white shadow-sm" />
+                    {/* Timeline Dot */}
+                    <div className={`absolute -left-[11px] top-1 w-6 h-6 rounded-full border-4 border-white shadow-md ${theme.bg}`} />
                     
-                    <div className="mb-4">
-                      <h4 className="text-lg font-bold text-slate-800">Week {week.week}: {week.theme}</h4>
-                      <div className="flex flex-wrap gap-2 mt-2">
+                    <div className="mb-6">
+                      <h4 className="text-xl font-bold text-slate-800">Week {week.week}: {week.theme}</h4>
+                      <div className="flex flex-wrap gap-2 mt-3">
                         {week.goals?.map((g: string, i: number) => (
-                          <span key={i} className="text-xs font-medium px-2 py-0.5 bg-green-50 text-green-700 rounded-md border border-green-200">
+                          <span key={i} className={`text-xs font-bold px-2.5 py-1 rounded-md ${theme.badge}`}>
                             🎯 {g}
                           </span>
                         ))}
@@ -268,13 +310,13 @@ const RoadmapDisplay = ({ plan }: { plan: any }) => {
 
                     <div className="grid grid-cols-1 gap-4">
                       {week.daily_tasks?.map((task: any, dIdx: number) => (
-                        <div key={dIdx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex justify-between items-start mb-2">
+                        <div key={dIdx} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow group">
+                          <div className="flex justify-between items-start mb-3">
                             <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded uppercase tracking-wider">
                               {task.day}
                             </span>
                           </div>
-                          <p className="font-medium text-slate-800 mb-3">{task.activity}</p>
+                          <p className="font-medium text-slate-800 mb-4 leading-relaxed">{task.activity}</p>
                           
                           <div className="space-y-2">
                             {task.resources?.map((res: any, rIdx: number) => (
@@ -283,17 +325,17 @@ const RoadmapDisplay = ({ plan }: { plan: any }) => {
                                 href={res.url} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-3 p-2 rounded-lg bg-slate-50 hover:bg-indigo-50 border border-slate-100 hover:border-indigo-200 transition-colors group"
+                                className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-100 hover:border-slate-200 transition-colors"
                               >
-                                <div className="shrink-0">
+                                <div className="shrink-0 p-1.5 bg-white rounded-md shadow-sm">
                                   {res.type === 'video' ? <Video size={16} className="text-red-500" /> : <BookOpen size={16} className="text-blue-500" />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-slate-700 group-hover:text-indigo-700 truncate">
+                                  <div className="text-sm font-semibold text-slate-700 hover:text-indigo-600 truncate">
                                     {res.title}
                                   </div>
                                 </div>
-                                <ExternalLink size={14} className="text-slate-400 group-hover:text-indigo-400" />
+                                <ExternalLink size={14} className="text-slate-400" />
                               </a>
                             ))}
                           </div>
@@ -404,10 +446,11 @@ export default function InterviewPage() {
     resumeSession,
     fetchHint
   } = useInterview();
-
+const { isListening, startListening, stopListening, transcriptBuffer, error: speechError, isSupported } = useWebSpeech();
   const { token } = useAuth();
   const [answer, setAnswer] = useState("");
   const [showReport, setShowReport] = useState(false);
+  const [roadmapTitle, setRoadmapTitle] = useState("");
   const [timeComplexity, setTimeComplexity] = useState("");
 const [spaceComplexity, setSpaceComplexity] = useState("");
 const [codeOutput, setCodeOutput] = useState<string | null>(null);
@@ -429,6 +472,7 @@ const allTestsPassed =
   const [showViolationWarning, setShowViolationWarning] = useState(false);
   const [terminatedByViolation, setTerminatedByViolation] = useState(false);
   const [violationReason, setViolationReason] = useState<string | null>(null);
+  
 const [roadmap, setRoadmap] = useState<any>(null);
   const [loadingRoadmap, setLoadingRoadmap] = useState(false);
   // Camera refs/state: separate preview and proctor video elements
@@ -445,8 +489,17 @@ const whiteboardElementsRef = useRef<readonly unknown[]>([]);
 
   // 📸 NEW: Explicit status for client-side image capture and validation
   const [imageStatus, setImageStatus] = useState<"pending" | "capturing" | "captured" | "error">("pending");
-
-  const [cameraError, setCameraError] = useState<string | null>(null);
+// Text-to-Speech state
+ const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [speechRate, setSpeechRate] = useState(1.0);
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [autoReadQuestions, setAutoReadQuestions] = useState(true);
+  const speechQueueRef = useRef<string[]>([]);
+ const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraPermissionRequested, setCameraPermissionRequested] = useState(false);
 
 const normalizeVerdict = (v?: string) => {
@@ -481,7 +534,45 @@ const [hint, setHint] = useState<string | null>(null);
   trigger: 'auto' | 'run' | 'paste' | 'initial';
 }
   const playbackHistory = useRef<CodeSnapshot[]>([]);
-
+const reinitializeCameraForResume = useCallback(async () => {
+  console.log("📹 Re-initializing camera after session resume...");
+  
+  try {
+    // Initialize proctor video stream
+    if (proctorVideoRef.current && !proctorVideoRef.current.srcObject) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720, facingMode: "user" },
+        audio: false,
+      });
+      
+      proctorVideoRef.current.srcObject = stream;
+      proctorVideoRef.current.muted = true;
+      proctorVideoRef.current.playsInline = true;
+      
+      // Wait for video to be ready
+      await new Promise<void>((resolve) => {
+        const checkReady = () => {
+          if (proctorVideoRef.current && proctorVideoRef.current.readyState >= 2) {
+            resolve();
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+        checkReady();
+      });
+      
+      await proctorVideoRef.current.play().catch(() => {});
+      
+      setCameraActive(true);
+      setImageStatus("captured"); // Mark as ready since we're resuming
+      
+      console.log("✅ Camera re-initialized successfully");
+    }
+  } catch (err) {
+    console.error("❌ Failed to re-initialize camera:", err);
+    setCameraError("Camera failed to restart. Please refresh the page.");
+  }
+}, []);
 const captureSnapshot = useCallback((trigger: CodeSnapshot['trigger']) => {
     // Only capture for code questions
     if (currentQuestion?.expectedAnswerType !== "code") return;
@@ -504,14 +595,25 @@ const captureSnapshot = useCallback((trigger: CodeSnapshot['trigger']) => {
     }
   }, [answer, currentQuestion]);
 useEffect(() => {
-    // Attempt resume if logged in, idle, and no session active yet
-    if (token && stage === "idle" && !sessionId) {
-      const savedId = localStorage.getItem("active_interview_session");
-      if (savedId) {
-        resumeSession(savedId);
-      }
+  // Attempt resume if logged in, idle, and no session active yet
+  if (token && stage === "idle" && !sessionId && !loading) {
+    const savedId = localStorage.getItem("active_interview_session");
+    if (savedId) {
+      console.log("🔄 Attempting to resume session:", savedId);
+      
+      resumeSession(savedId)
+        .then(() => {
+          console.log("✅ Session resumed successfully");
+          // ❌ DON'T call reinitializeCameraForResume here!
+          // Camera will be initialized by the effect below when stage becomes "running"
+        })
+        .catch((err) => {
+          console.error("❌ Session resume failed:", err);
+          localStorage.removeItem("active_interview_session");
+        });
     }
-  }, [token, stage, sessionId, resumeSession]);
+  }
+}, [token, stage, sessionId, resumeSession, loading]);
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (stage === "running" && currentQuestion?.expectedAnswerType === "code") {
@@ -538,6 +640,7 @@ useEffect(() => {
         captureSnapshot('paste');
     });
   };
+
   /* -------------------------
       Helper: stop camera stream
       ------------------------- */
@@ -559,29 +662,38 @@ useEffect(() => {
       console.warn("stopCamera error:", e);
     }
   }, []);
-  const fetchRoadmap = useCallback(async()=>{
-    if(!sessionId || !token || roadmap || loadingRoadmap) return;
-    setLoadingRoadmap(true);
-    try {
-      console.log("🗺️ Fetching AI Roadmap...");
-      const res = await fetch(`${API}/interview/roadmap`,{
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({sessionId},)
-      });
-      const data = await res.json();
-      if (data.roadmap) {
-        setRoadmap(data.roadmap);
-      }
-    } catch (err) {
-      console.error("❌ Failed to fetch roadmap:", err);
-    } finally {
-      setLoadingRoadmap(false);
+  // Add this new function near your other camera helpers
+const fetchRoadmap = useCallback(async () => {
+  // Prevent duplicate fetches or fetching if missing auth
+  if (!sessionId || !token || roadmap || loadingRoadmap) return;
+  
+  setLoadingRoadmap(true);
+  
+  try {
+    console.log("🗺️ Fetching AI Roadmap...");
+
+    const res = await fetch(`${API}/interview/roadmap`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ sessionId }),
+    });
+
+    const data = await res.json();
+
+    if (data.roadmap) {
+      setRoadmap(data.roadmap);
+      // 👇 SUCCESS: This captures the tier (e.g. "Advanced Mastery Plan")
+      setRoadmapTitle(data.plan_type || "Personalized Roadmap");
     }
-  },[sessionId, token, API, roadmap, loadingRoadmap])
+  } catch (err) {
+    console.error("❌ Failed to fetch roadmap:", err);
+  } finally {
+    setLoadingRoadmap(false);
+  }
+}, [sessionId, token, API, roadmap, loadingRoadmap]);
   
 // --------------------- Helper: normalize testcases ---------------------
 const buildTestCasesFromChallenge = (challenge: any) => {
@@ -1123,14 +1235,22 @@ const w = video.videoWidth;
       Proctoring effect (interval + warmup) (unchanged)
       ------------------------- */
 // ----------------- PROCTORING useEffect (minimal change) -----------------
+// ----------------- PROCTORING useEffect (UPDATED) -----------------
 useEffect(() => {
   let proctorInterval: number | null = null;
 
+  // CRITICAL: Stop proctoring if interview is not running
   if (stage !== "running" || !cameraActive || !token) {
-    return () => {};
+    console.log(`🛑 Proctoring stopped: stage=${stage}, camera=${cameraActive}, token=${!!token}`);
+    return () => {
+      if (proctorInterval) {
+        window.clearInterval(proctorInterval);
+        proctorInterval = null;
+      }
+    };
   }
 
-  // Keep the same frame validator locally (unchanged)
+  // Keep the same frame validator locally
   const isValidFrame = (dataUrl: string | null): boolean => {
     if (!dataUrl || typeof dataUrl !== "string") return false;
     if (dataUrl.length < 500) {
@@ -1149,15 +1269,16 @@ useEffect(() => {
     return true;
   };
 
-  // sendProctorPayload: only send { sessionId, image } in the request body
+  // sendProctorPayload: only send valid frames
   const sendProctorPayload = async (payload: { sessionId: string; image: string | null }) => {
     try {
-      // Log a short sample for debugging (keeps logs compact)
-      if (payload.image) {
-        console.debug("[proctor -> server] sending image sample:", String(payload.image).substring(0, 80), "len=", String(payload.image).length);
-      } else {
-        console.debug("[proctor -> server] sending image=null for session:", payload.sessionId);
+      // CRITICAL CHECK: Don't send if image is invalid
+      if (!payload.image || !isValidFrame(payload.image)) {
+        console.warn("[proctor] Skipping send - invalid frame");
+        return { ok: false, skipReason: "invalid_frame" };
       }
+
+      console.debug("[proctor -> server] sending image sample:", String(payload.image).substring(0, 80), "len=", String(payload.image).length);
 
       const res = await fetch(`${API || ""}/interview/proctor`, {
         method: "POST",
@@ -1177,7 +1298,6 @@ useEffect(() => {
       if (hasError) {
         const violationReason = j?.error || j?.reason || j?.detail || "Face verification failed";
         console.warn(`[PROCTOR VIOLATION detected] Reason: ${violationReason}`);
-        // Trigger violation handling (existing wrapper)
         reportViolationWrapper(violationReason, false);
       } else if (j?.status === "success" || j?.verified === true) {
         if (showViolationWarning) setShowViolationWarning(false);
@@ -1190,55 +1310,106 @@ useEffect(() => {
     }
   };
 
-  const warmupAndStart = async () => {
-    if (!sessionId) {
-      console.debug("proctor warmup: sessionId missing, skipping warmup POST. Waiting for startInterview to update state.");
+const warmupAndStart = async () => {
+  if (!sessionId) {
+    console.debug("proctor warmup: sessionId missing, skipping warmup POST.");
+    return;
+  }
+
+  // ADDED: Verify interview is still active
+  if (stage !== "running") {
+    console.log("🛑 Interview not running - skipping proctor warmup");
+    return;
+  }
+
+  try {
+    // ✅ CRITICAL FIX: Always ensure video has a stream before capturing
+    if (proctorVideoRef.current && !proctorVideoRef.current.srcObject) {
+      console.log("⚠️ Proctor video has no stream - initializing...");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720, facingMode: "user" },
+          audio: false,
+        });
+        proctorVideoRef.current.srcObject = stream;
+        proctorVideoRef.current.muted = true;
+        proctorVideoRef.current.playsInline = true;
+        
+        // ✅ WAIT for ready state before capturing
+        await new Promise<void>((resolve) => {
+          const checkReady = () => {
+            if (proctorVideoRef.current && proctorVideoRef.current.readyState >= 2) {
+              resolve();
+            } else {
+              setTimeout(checkReady, 100);
+            }
+          };
+          checkReady();
+        });
+        
+        await proctorVideoRef.current.play().catch(() => {});
+        console.log("✅ Proctor video stream initialized");
+      } catch (gErr) {
+        console.error("❌ Failed to initialize proctor video:", gErr);
+        return; // Exit warmup if camera fails
+      }
+    }
+
+    // ✅ Now verify video is actually ready before capturing
+    const video = proctorVideoRef.current;
+    if (!video || video.readyState < 2 || !video.videoWidth) {
+      console.warn("⚠️ Video not ready yet, skipping warmup capture");
       return;
     }
 
-    try {
-      if (proctorVideoRef.current && !proctorVideoRef.current.srcObject) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-            audio: false,
-          });
-          proctorVideoRef.current.srcObject = stream;
-          proctorVideoRef.current.muted = true;
-          proctorVideoRef.current.playsInline = true;
-          try { await proctorVideoRef.current.play(); } catch (e) { console.warn("proctor warmup: play() blocked:", e); }
-        } catch (gErr) {
-          console.warn("proctor warmup: failed to get userMedia for proctor video:", gErr);
-        }
-      }
+    const firstFrame = await captureFrameToDataUrl();
 
-      const firstFrame = await captureFrameToDataUrl();
-
-      // IMPORTANT: Always send only { sessionId, image }, even when frame invalid.
-      // We still use isValidFrame locally for quicker rejection/logic, but the payload remains minimal.
+    // Only send if we have a valid frame
+    if (firstFrame && isValidFrame(firstFrame)) {
       inFlightRef.current = true;
       try {
         await sendProctorPayload({ sessionId, image: firstFrame });
       } finally {
         inFlightRef.current = false;
       }
-    } catch (e) {
-      console.warn("proctor warmup error:", e);
+    } else {
+      console.warn("⚠️ Warmup skipped - invalid first frame");
     }
+  } catch (e) {
+    console.warn("proctor warmup error:", e);
+  }
 
     // interval checks
     proctorInterval = window.setInterval(async () => {
-      if (!sessionId) { console.debug("proctor interval: sessionId missing, skipping POST"); return; }
+      // CRITICAL: Check if interview is still running
+      if (stage !== "running") {
+        console.log("🛑 Interview ended - stopping proctor interval");
+        if (proctorInterval) {
+          window.clearInterval(proctorInterval);
+          proctorInterval = null;
+        }
+        return;
+      }
+
+      if (!sessionId) { 
+        console.debug("proctor interval: sessionId missing, skipping POST"); 
+        return; 
+      }
       if (inFlightRef.current) return;
+      
       inFlightRef.current = true;
       try {
         const frame = await captureFrameToDataUrl();
 
-        // Always send only sessionId + image
-        try {
-          await sendProctorPayload({ sessionId, image: frame });
-        } catch (err) {
-          console.warn("proctor image POST failed:", err);
+        // Only send if frame is valid
+        if (frame && isValidFrame(frame)) {
+          try {
+            await sendProctorPayload({ sessionId, image: frame });
+          } catch (err) {
+            console.warn("proctor image POST failed:", err);
+          }
+        } else {
+          console.warn("Proctor interval: invalid frame, skipping send");
         }
       } catch (err) {
         console.warn("proctor interval error:", err);
@@ -1251,13 +1422,18 @@ useEffect(() => {
   warmupAndStart();
 
   return () => {
-    if (proctorInterval) window.clearInterval(proctorInterval);
+    if (proctorInterval) {
+      console.log("🧹 Cleaning up proctor interval");
+      window.clearInterval(proctorInterval);
+      proctorInterval = null;
+    }
   };
-}, [stage, cameraActive, sessionId, token, API, captureFrameToDataUrl]);
+}, [stage, cameraActive, sessionId, token, API, captureFrameToDataUrl, ]);
 
   /* -------------------------
       Fullscreen helpers (unchanged)
       ------------------------- */
+    
   const isFullscreen = useCallback((): boolean => {
     return (
       !!document.fullscreenElement ||
@@ -1367,6 +1543,8 @@ const handleStart = useCallback(
         }
 
         console.log("✅ Session created:", serverSessionId);
+        localStorage.setItem("active_interview_session", serverSessionId);
+
 if (data?.round_info) {
   setCurrentRound(data.round_info.current || "screening");
   setRoundProgress(data.round_info.progress || null);
@@ -1558,16 +1736,247 @@ if (currentQuestion?.expectedAnswerType === "code") {
   /* -------------------------
       Cleanup effect (unmount) (unchanged)
       ------------------------- */
-  useEffect(() => {
-    return () => {
-      stopCamera();
-      if (countdownTimerRef.current) {
-        window.clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-    };
-  }, [stopCamera]);
+useEffect(() => {
+  return () => {
+    cameraInitAttempted.current = false; // ✅ Reset for next mount
+    stopCamera();
+    if (countdownTimerRef.current) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  };
+}, [stopCamera]);
+  /* ========================
+    🎤 ENHANCED TEXT-TO-SPEECH SYSTEM
+    ======================== */
 
+// Load available voices
+useEffect(() => {
+  const loadVoices = () => {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      setAvailableVoices(voices);
+      
+      // Auto-select best English voice
+      const preferredVoice = voices.find(v => 
+        v.lang.startsWith('en') && v.name.includes('Google')
+      ) || voices.find(v => v.lang.startsWith('en'));
+      
+      if (preferredVoice) setSelectedVoice(preferredVoice);
+    }
+  };
+
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+
+  return () => {
+    window.speechSynthesis.onvoiceschanged = null;
+  };
+}, []);
+
+// Core TTS function with queue support
+// ✅ STABLE SPEAK FUNCTION
+const speakText = useCallback((text: string, priority: boolean = false) => {
+  if (!text || typeof window === 'undefined' || !window.speechSynthesis) return;
+
+  // 1. Force Stop if Priority (User clicked a button)
+  if (priority) {
+    window.speechSynthesis.cancel();
+    speechQueueRef.current = [];
+  }
+
+  // 2. Queue if already speaking (Automatic flow)
+  // This ensures Feedback waits for Question to finish
+  if (!priority && window.speechSynthesis.speaking) {
+    speechQueueRef.current.push(text);
+    return;
+  }
+
+  // 3. Clean Text
+  const cleanText = text
+    .replace(/```[\s\S]*?```/g, 'code block')
+    .replace(/[*#`]/g, '')
+    .trim();
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.rate = speechRate;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  
+  if (selectedVoice) {
+    utterance.voice = selectedVoice;
+  }
+
+  // 4. Handle Events
+  utterance.onstart = () => {
+    setIsSpeaking(true);
+    setIsPaused(false);
+  };
+
+  utterance.onend = () => {
+    setIsSpeaking(false);
+    setIsPaused(false);
+    
+    // Process next item in queue
+    if (speechQueueRef.current.length > 0) {
+      const next = speechQueueRef.current.shift();
+      if (next) {
+        setTimeout(() => speakText(next, false), 250);
+      }
+    }
+  };
+
+  utterance.onerror = (e) => {
+    if (e.error !== 'interrupted' && e.error !== 'canceled') {
+      console.warn('Speech error:', e);
+    }
+    setIsSpeaking(false);
+  };
+
+  speechSynthesisRef.current = utterance;
+  window.speechSynthesis.speak(utterance);
+
+}, [speechRate, selectedVoice]); // ❌ NO 'isSpeaking' dependency
+
+const pauseSpeaking = useCallback(() => {
+  if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+    window.speechSynthesis.pause();
+    setIsPaused(true);
+  }
+}, []);
+
+const resumeSpeaking = useCallback(() => {
+  if (window.speechSynthesis.paused) {
+    window.speechSynthesis.resume();
+    setIsPaused(false);
+  }
+}, []);
+
+const stopSpeaking = useCallback(() => {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsPaused(false);
+    speechQueueRef.current = [];
+  }
+}, []);
+
+const toggleSpeak = useCallback(() => {
+  if (isSpeaking) {
+    if (isPaused) {
+      resumeSpeaking();
+    } else {
+      pauseSpeaking();
+    }
+  } else if (currentQuestion?.questionText) {
+    speakText(currentQuestion.questionText, true);
+  }
+}, [isSpeaking, isPaused, currentQuestion, speakText, pauseSpeaking, resumeSpeaking]);
+
+// Auto-speak questions when they appear
+useEffect(() => {
+  if (currentQuestion?.questionText && stage === "running" && autoReadQuestions) {
+    const timer = setTimeout(() => {
+      speakText(currentQuestion.questionText, true);
+    }, 800);
+    return () => clearTimeout(timer);
+  }
+}, [currentQuestion?.questionId, stage, autoReadQuestions, speakText]);
+// Cleanup TTS when stage changes or unmount
+useEffect(() => {
+  // Stop speaking when interview ends or changes stage
+  if (stage === "done" || stage === "idle") {
+    stopSpeaking();
+  }
+  
+  return () => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  };
+}, [stage, stopSpeaking]);
+// Auto-speak AI Mentor feedback when it appears
+
+useEffect(() => {
+  if (lastFeedback && stage === "running" && autoReadQuestions) {
+    // Wait 1.5s to ensure the Question has started reading first.
+    // This allows speakText to see "speaking=true" and queue this correctly.
+    const timer = setTimeout(() => {
+      speakText(lastFeedback, false); 
+    }, 1500); 
+
+    return () => clearTimeout(timer);
+  }
+}, [lastFeedback]); // ✅ Only runs when feedback content changes
+// Cleanup on unmount
+useEffect(() => {
+  return () => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  };
+}, []);
+
+/* ========================
+    🎙️ ENHANCED SPEECH-TO-TEXT 
+    ======================== */
+const handleMicToggleEnhanced = useCallback(() => {
+  if (isListening) {
+    // --- STOPPING THE MIC ---
+    stopListening();
+
+    // It is safe to speak here because we just stopped the mic
+    if (transcriptBuffer && transcriptBuffer.trim().length > 0) {
+      const wordCount = transcriptBuffer.trim().split(/\s+/).length;
+      speakText(`Captured ${wordCount} word${wordCount !== 1 ? 's' : ''}`, false);
+    }
+  } else {
+    // --- STARTING THE MIC ---
+    
+    // 1. HARD STOP any current speech. 
+    // If the computer is talking, the browser might block the microphone.
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+    stopSpeaking(); // Updates your React state to 'not speaking'
+    
+    // 2. Start Listening
+    startListening((newSentence) => {
+      setAnswer((prev) => {
+        const cleaned = prev.trim();
+        // Add proper spacing and punctuation automatically
+        const separator = cleaned.length > 0 ? 
+          (cleaned.endsWith('.') || cleaned.endsWith('!') || cleaned.endsWith('?') ? ' ' : '. ') : 
+          '';
+        return cleaned + separator + newSentence;
+      });
+    });
+    
+    // ❌ REMOVED: speakText("Listening now", false); 
+    // This line was causing the "start and end simultaneously" bug.
+  }
+}, [isListening, stopListening, startListening, transcriptBuffer, stopSpeaking, speakText]);
+
+const handleMicToggle = handleMicToggleEnhanced;
+useEffect(() => {
+  if (stage !== "running") return;
+
+  const handleKeyPress = (e: KeyboardEvent) => {
+    // Space bar to toggle mic (when not typing in textarea)
+    if (e.code === 'Space' && e.target === document.body) {
+      e.preventDefault();
+      handleMicToggle();
+    }
+    
+    // ESC to stop recording
+    if (e.code === 'Escape' && isListening) {
+      stopListening();
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyPress);
+  return () => window.removeEventListener('keydown', handleKeyPress);
+}, [stage, isListening, handleMicToggle, stopListening]);
   /* -------------------------
       Fullscreen and Window Event Handlers (unchanged)
       ------------------------- */
@@ -1610,7 +2019,125 @@ if (currentQuestion?.expectedAnswerType === "code") {
     </div>
   );
 };
+/* ========================
+    🎛️ VOICE SETTINGS MODAL
+    ======================== */
+const VoiceSettingsModal = () => {
+  if (!showVoiceSettings) return null;
 
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in fade-in">
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Settings size={20} />
+              Voice Settings
+            </h3>
+            <button
+              onClick={() => setShowVoiceSettings(false)}
+              className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Auto-read toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-bold text-slate-700">
+              Auto-read questions
+            </label>
+            <button
+              onClick={() => setAutoReadQuestions(!autoReadQuestions)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                autoReadQuestions ? 'bg-indigo-600' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  autoReadQuestions ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          {/* Auto-read feedback toggle */}
+<div className="flex items-center justify-between">
+  <label className="text-sm font-bold text-slate-700">
+    Read AI feedback aloud
+  </label>
+  <button
+    onClick={() => setAutoReadQuestions(!autoReadQuestions)}
+    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+      autoReadQuestions ? 'bg-indigo-600' : 'bg-slate-300'
+    }`}
+  >
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+        autoReadQuestions ? 'translate-x-6' : 'translate-x-1'
+      }`}
+    />
+  </button>
+</div>
+
+
+          {/* Speech rate */}
+          <div>
+            <label className="text-sm font-bold text-slate-700 block mb-2">
+              Speech Rate: {speechRate.toFixed(1)}x
+            </label>
+            <input
+              type="range"
+              min="0.5"
+              max="2"
+              step="0.1"
+              value={speechRate}
+              onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+            />
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>Slow</span>
+              <span>Normal</span>
+              <span>Fast</span>
+            </div>
+          </div>
+
+          {/* Voice selection */}
+          <div>
+            <label className="text-sm font-bold text-slate-700 block mb-2">
+              Voice Selection
+            </label>
+            <select
+              value={selectedVoice?.name || ''}
+              onChange={(e) => {
+                const voice = availableVoices.find(v => v.name === e.target.value);
+                if (voice) setSelectedVoice(voice);
+              }}
+              className="w-full p-2 border-2 border-slate-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              {availableVoices
+                .filter(v => v.lang.startsWith('en'))
+                .map(voice => (
+                  <option key={voice.name} value={voice.name}>
+                    {voice.name} ({voice.lang})
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Test button */}
+          <button
+            onClick={() => speakText("This is a test of the selected voice and speed", true)}
+            className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-bold hover:shadow-lg transition-all"
+          >
+            Test Voice
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 const RoundTransitionModal = () => {
   if (!showRoundModal) return null;
 
@@ -1741,7 +2268,67 @@ const handleExcalidrawAPI = useCallback((api: any) => {
       Auto-capture reference image when ready (only on idle)
       -------------------------------------------------------------------------- */
  const autoCaptureDoneRef = useRef(false);
+// ✅ NEW: Initialize camera when stage transitions to "running" (after resume)
+const cameraInitAttempted = useRef(false);
 
+// ✅ ROBUST CAMERA INIT FIX
+useEffect(() => {
+  let retryTimeout: NodeJS.Timeout;
+
+  const tryInitCamera = async () => {
+    // If we are not running or already active, stop.
+    if (stage !== "running" || cameraActive) return;
+
+    // If the video ref is missing, wait 500ms and try again (Fixes the race condition)
+    if (!proctorVideoRef.current) {
+      console.log("⏳ Video element not ready, retrying in 500ms...");
+      retryTimeout = setTimeout(tryInitCamera, 500);
+      return;
+    }
+
+    if (cameraInitAttempted.current) return;
+    cameraInitAttempted.current = true;
+
+    console.log("📹 Initializing camera for resumed session...");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720, facingMode: "user" },
+        audio: false,
+      });
+
+      if (proctorVideoRef.current) {
+        proctorVideoRef.current.srcObject = stream;
+        proctorVideoRef.current.muted = true;
+        proctorVideoRef.current.playsInline = true;
+
+        // Robust wait for video ready state
+        let waited = 0;
+        while (proctorVideoRef.current.readyState < 2 && waited < 5000) {
+          await new Promise((r) => setTimeout(r, 100));
+          waited += 100;
+        }
+
+        await proctorVideoRef.current.play().catch((e) => console.warn("Autoplay blocked", e));
+
+        setCameraActive(true);
+        setImageStatus("captured");
+        console.log("✅ Camera ready for resumed interview");
+      }
+    } catch (err: any) {
+      console.error("❌ Camera init failed:", err);
+      setCameraError("Camera restart failed. Please refresh the page.");
+      setImageStatus("error");
+      cameraInitAttempted.current = false; // Allow retry on error
+    }
+  };
+
+  if (stage === "running") {
+    tryInitCamera();
+  }
+
+  return () => clearTimeout(retryTimeout);
+}, [stage, cameraActive]);// ✅ Minimal dependencies - only react to stage/camera changes
 useEffect(() => {
   if (autoCaptureDoneRef.current) return;
 
@@ -1753,8 +2340,15 @@ useEffect(() => {
     previewVideoRef.current &&
     previewCanvasRef.current
   ) {
-    autoCaptureDoneRef.current = true;
-    captureReferenceImage().catch(() => {});
+  const timer = setTimeout(() => {
+      autoCaptureDoneRef.current = true;
+      captureReferenceImage().catch((err) => {
+        console.warn("Auto-capture failed:", err);
+        autoCaptureDoneRef.current = false; // Allow retry
+      });
+    }, 500);
+    
+    return () => clearTimeout(timer);
   }
 }, [stage, resumeParsed, token, imageStatus, captureReferenceImage]);
 
@@ -1931,6 +2525,8 @@ useEffect(() => {
      setHint(h);
      setLoadingHint(false);
   };
+
+
 const RoundIndicator = () => {
     if (stage !== "running") return null;
 
@@ -1985,29 +2581,59 @@ const RoundIndicator = () => {
       </div>
     );
   };
-
+// Auto-speak final decision reason
+useEffect(() => {
+  if (stage === "done" && finalDecision?.reason && autoReadQuestions) {
+    const timer = setTimeout(() => {
+      speakText(finalDecision.reason, false);
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      // Cancel speech if user navigates away before it finishes
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }
+}, [stage, finalDecision, autoReadQuestions, speakText]);
   return (
     <div className="min-h-screen bg-slate-50 py-12">
       {/* Fixed Camera View (during interview) (unchanged) */}
-      {cameraActive && stage === "running" && (
-        <div className="fixed top-4 right-4 z-40 w-40 h-30 bg-white rounded-xl shadow-xl border-4 border-white overflow-hidden transform scale-x-[-1] transition-transform duration-300">
-          <video
-            ref={proctorVideoRef}
-            autoPlay
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-          />
-          {/* hidden canvases */}
-          <canvas ref={captureCanvasRef} style={{ display: "none" }} />
-          <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/50 px-2 py-0.5 rounded-full">
-            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-            <span className="text-[10px] text-white font-bold tracking-wider">
-              REC
-            </span>
-          </div>
-        </div>
-      )}
+    {stage === "running" && (
+  <div 
+    className={`fixed top-4 right-4 z-40 w-40 h-30 bg-white rounded-xl shadow-xl border-4 border-white overflow-hidden transform scale-x-[-1] transition-transform duration-300 ${
+      cameraActive ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
+    }`}
+  >
+    <video
+      ref={proctorVideoRef}
+      autoPlay
+      muted
+      playsInline
+      className="w-full h-full object-cover"
+    />
+    {/* hidden canvases */}
+    <canvas ref={captureCanvasRef} style={{ display: "none" }} />
+    <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/50 px-2 py-0.5 rounded-full">
+      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+      <span className="text-[10px] text-white font-bold tracking-wider">
+        REC
+      </span>
+    </div>
+  </div>
+)}
+      {stage === "running" && imageStatus === "pending" && (
+  <div className="fixed top-20 right-4 z-40 bg-amber-50 border-2 border-amber-300 rounded-xl p-4 shadow-xl max-w-xs animate-in fade-in slide-in-from-right-4">
+    <div className="flex items-center gap-3">
+      <Loader2 className="animate-spin text-amber-600" size={20} />
+      <div>
+        <div className="font-bold text-amber-900 text-sm">Restoring Camera...</div>
+        <div className="text-xs text-amber-700">Reconnecting proctoring system</div>
+      </div>
+    </div>
+  </div>
+)}
+
 
       <div className="max-w-6xl mx-auto">
         {/* Violation banners (unchanged) */}
@@ -2142,6 +2768,8 @@ const RoundIndicator = () => {
                           "Candidate chose to end interview after warning",
                           true
                         );
+                        localStorage.removeItem("active_interview_session");
+
                       } catch (e) {
                         console.warn(
                           "endInterview error from reenter modal:",
@@ -2189,6 +2817,7 @@ const RoundIndicator = () => {
         )}
               <EliminationModal />
 <RoundTransitionModal />
+<VoiceSettingsModal />
 
         {/* Header (unchanged) */}
         <div className="mb-8 flex items-center justify-between">
@@ -2335,7 +2964,7 @@ const RoundIndicator = () => {
         )}
 
         {/* Start Button & Camera Preview */}
-     {stage === "idle" && resumeParsed && token && (
+     {(stage as string) === "idle" && resumeParsed && token && (
   <div className="mb-8 flex flex-col items-center">
     <div className="mb-6 relative group">
       <div className="w-80 h-60 bg-slate-900 rounded-2xl overflow-hidden border-4 border-white shadow-xl ring-4 ring-indigo-100 relative">
@@ -2368,6 +2997,26 @@ const RoundIndicator = () => {
             <div className="text-xs mt-2 underline">Click here to retry</div>
           </div>
         )}
+        {/* Speech Recognition Error */}
+{speechError && stage === "running" && (
+  <div className="mb-4 p-4 rounded-xl bg-amber-50 border-2 border-amber-200 text-amber-900 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2">
+    <AlertCircle size={20} className="shrink-0" />
+    <div>
+      <div className="font-bold">Speech Recognition Issue</div>
+      <div className="text-sm">{speechError}</div>
+    </div>
+  </div>
+)}
+
+{!isSupported && stage === "running" && (
+  <div className="mb-4 p-4 rounded-xl bg-rose-50 border-2 border-rose-200 text-rose-900 flex items-start gap-3 shadow-sm">
+    <X size={20} className="shrink-0" />
+    <div>
+      <div className="font-bold">Speech Recognition Not Supported</div>
+      <div className="text-sm">Please use Chrome, Edge, or Safari for voice input.</div>
+    </div>
+  </div>
+)}
       </div>
 
       {/* Status indicator */}
@@ -2420,110 +3069,206 @@ const RoundIndicator = () => {
         {/* ACTIVE INTERVIEW (unchanged) */}
 {stage === "running" && currentQuestion && !terminatedByViolation && (
   <div className="space-y-6 max-w-5xl mx-auto">
-    {lastFeedback && (
-      <div className="p-6 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-l-4 border-amber-500 rounded-r-2xl shadow-lg animate-in fade-in slide-in-from-top-4 duration-500">
-        <div className="flex items-start gap-4">
-          <div className="p-3 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shrink-0 shadow-md">
-            <Lightbulb size={24} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-black text-amber-900 uppercase tracking-wider mb-2 flex items-center gap-2">
-              💡 AI Mentor Feedback
-            </h4>
-            <p className="text-amber-900 text-base leading-relaxed font-medium">
-              {lastFeedback}
-            </p>
-          </div>
-        </div>
+{lastFeedback && (
+  <div className="p-6 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-l-4 border-amber-500 rounded-r-2xl shadow-lg animate-in fade-in slide-in-from-top-4 duration-500 relative group">
+    <div className="flex items-start gap-4">
+      <div className="p-3 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shrink-0 shadow-md">
+        <Lightbulb size={24} className="text-white" />
       </div>
-    )}
-
-    <div className="bg-white rounded-2xl shadow-2xl border-2 border-slate-200 overflow-hidden">
-      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 border-b-2 border-slate-200">
-        <div className="flex justify-between items-start mb-3">
-          <span className="text-xs font-black tracking-widest text-indigo-600 uppercase bg-indigo-100 px-3 py-1.5 rounded-lg border-2 border-indigo-200">
-            Question {history.length + 1}
-          </span>
-
-          {/* ✅ SINGLE HINT BUTTON (kept original handler) */}
+      <div className="flex-1">
+        <div className="flex justify-between items-start mb-2">
+          <h4 className="text-sm font-black text-amber-900 uppercase tracking-wider flex items-center gap-2">
+            💡 AI Mentor Feedback
+          </h4>
+          
+          {/* 👇 NEW: Audio Control Button for Feedback */}
           <button
-            onClick={handleGetHint}
-            disabled={loadingHint || !!hint}
-            className={`flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full border transition-colors ${
-              hint
-                ? "bg-amber-100 text-amber-800 border-amber-200 cursor-default"
-                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-            }`}
+            onClick={() => {
+              if (isSpeaking) {
+                // If speaking, toggle pause/resume
+                if (isPaused) resumeSpeaking();
+                else pauseSpeaking();
+              } else {
+                // If not speaking, read this feedback immediately (Priority: True)
+                speakText(lastFeedback, true);
+              }
+            }}
+            className="p-2 bg-white/50 hover:bg-white rounded-full text-amber-700 transition-all shadow-sm border border-amber-200"
+            title="Read Feedback"
           >
-            {loadingHint ? (
-              <Loader2 size={12} className="animate-spin" />
+            {isSpeaking ? (
+              isPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />
             ) : (
-              <Lightbulb size={12} />
+              <Volume2 size={16} />
             )}
-            {hint ? "Hint Active (-15%)" : "Get Hint"}
           </button>
         </div>
-
-        <div className="flex items-center gap-2 mb-2">
-          {currentQuestion.difficulty && (
-            <span
-              className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
-                currentQuestion.difficulty === "expert" ||
-                currentQuestion.difficulty === "hard"
-                  ? "bg-rose-100 text-rose-700 border-2 border-rose-200"
-                  : "bg-amber-100 text-amber-700 border-2 border-amber-200"
-              }`}
-            >
-              {currentQuestion.difficulty.toUpperCase()}
-            </span>
-          )}
-        </div>
-
-        {/* ✅ SINGLE HINT DISPLAY */}
-        {hint && (
-          <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r text-sm text-yellow-900 animate-in fade-in slide-in-from-top-2">
-            <strong className="block mb-1 font-bold flex items-center gap-2">
-              <Lightbulb size={16} /> Hint:
-            </strong>
-            {hint}
-          </div>
-        )}
-
-        {isProbeQuestion && (
-          <div className="mt-3 p-3 bg-amber-50 border-l-4 border-amber-400 rounded text-sm">
-            <div className="flex items-center gap-2 text-amber-800 font-bold mb-1">
-              <HelpCircle size={16} />
-              <span>Follow-up Question</span>
-            </div>
-            <p className="text-amber-700 text-xs">
-              This is a clarifying question based on your previous answer.
-              Take your time to provide more detail.
-            </p>
-          </div>
-        )}
-
-        <h2 className="text-2xl font-bold text-slate-900 leading-snug">
-          {currentQuestion.questionText}
-        </h2>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {currentQuestion.target_project && (
-            <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
-              🎯 {currentQuestion.target_project}
-            </span>
-          )}
-          {currentQuestion.technology_focus && (
-            <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-lg border border-purple-200 font-medium">
-              ⚡ {currentQuestion.technology_focus}
-            </span>
-          )}
-          {currentQuestion.expectedAnswerType === "code" && (
-            <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-lg border border-green-200 font-medium">
-              💻 Code Expected
-            </span>
-          )}
-        </div>
+        
+        <p className="text-amber-900 text-base leading-relaxed font-medium">
+          {lastFeedback}
+        </p>
       </div>
+    </div>
+  </div>
+)}
+
+    <div className="bg-white rounded-2xl shadow-2xl border-2 border-slate-200 overflow-hidden">
+<div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 border-b-2 border-slate-200">
+  <div className="flex justify-between items-start mb-3">
+{/* Find this section in your code */}
+<span className="text-xs font-black tracking-widest text-indigo-600 uppercase bg-indigo-100 px-3 py-1.5 rounded-lg border-2 border-indigo-200">
+  {/* OLD CODE: Question {currentQuestion?.questionNumber || history.length + 1} */}
+  
+  {/* NEW FIX: Filter history to ensure we don't count the current question ID if it exists in history */}
+  Question {
+    currentQuestion?.questionNumber || 
+    (history.filter(h => h.q?.questionId !== currentQuestion?.questionId).length + 1)
+  }
+</span>
+
+ 
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* TTS Controls */}
+      <div className="flex items-center gap-1 bg-white rounded-full p-1 shadow-sm border border-slate-200">
+        <button
+          onClick={toggleSpeak}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+            isSpeaking
+              ? isPaused
+                ? "bg-amber-100 text-amber-700"
+                : "bg-rose-100 text-rose-700 animate-pulse"
+              : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+          }`}
+          title={isSpeaking ? (isPaused ? "Resume" : "Pause") : "Read Question"}
+        >
+          {isSpeaking ? (
+            isPaused ? (
+              <>
+                <Play size={14} fill="currentColor" />
+                Resume
+              </>
+            ) : (
+              <>
+                <Pause size={14} />
+                Pause
+              </>
+            )
+          ) : (
+            <>
+              <Volume2 size={14} />
+              Read
+            </>
+          )}
+        </button>
+
+        {isSpeaking && (
+          <>
+            <button
+              onClick={stopSpeaking}
+              className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+              title="Stop"
+            >
+              <Square size={14} className="text-slate-600" />
+            </button>
+
+            <div className="flex items-center gap-1 px-2 border-l border-slate-200">
+              <span className="text-[10px] text-slate-500 font-bold">
+                {speechRate.toFixed(1)}x
+              </span>
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={() => setShowVoiceSettings(true)}
+          className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+          title="Voice Settings"
+        >
+          <Settings size={14} className="text-slate-600" />
+        </button>
+      </div>
+
+      {/* Existing Hint Button */}
+      <button
+        onClick={handleGetHint}
+        disabled={loadingHint || !!hint}
+        className={`flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full border transition-colors ${
+          hint
+            ? "bg-amber-100 text-amber-800 border-amber-200 cursor-default"
+            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+        }`}
+      >
+        {loadingHint ? (
+          <Loader2 size={12} className="animate-spin" />
+        ) : (
+          <Lightbulb size={12} />
+        )}
+        {hint ? "Hint Active (-15%)" : "Get Hint"}
+      </button>
+    </div>
+  </div>
+
+  {/* Rest of the header content remains the same */}
+  <div className="flex items-center gap-2 mb-2">
+    {currentQuestion.difficulty && (
+      <span
+        className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+          currentQuestion.difficulty === "expert" ||
+          currentQuestion.difficulty === "hard"
+            ? "bg-rose-100 text-rose-700 border-2 border-rose-200"
+            : "bg-amber-100 text-amber-700 border-2 border-amber-200"
+        }`}
+      >
+        {currentQuestion.difficulty.toUpperCase()}
+      </span>
+    )}
+  </div>
+
+  {/* Hint Display */}
+  {hint && (
+    <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r text-sm text-yellow-900 animate-in fade-in slide-in-from-top-2">
+      <strong className="block mb-1 font-bold flex items-center gap-2">
+        <Lightbulb size={16} /> Hint:
+      </strong>
+      {hint}
+    </div>
+  )}
+
+  {isProbeQuestion && (
+    <div className="mt-3 p-3 bg-amber-50 border-l-4 border-amber-400 rounded text-sm">
+      <div className="flex items-center gap-2 text-amber-800 font-bold mb-1">
+        <HelpCircle size={16} />
+        <span>Follow-up Question</span>
+      </div>
+      <p className="text-amber-700 text-xs">
+        This is a clarifying question based on your previous answer.
+        Take your time to provide more detail.
+      </p>
+    </div>
+  )}
+
+  <h2 className="text-2xl font-bold text-slate-900 leading-snug">
+    {currentQuestion.questionText}
+  </h2>
+
+  <div className="mt-4 flex flex-wrap gap-2">
+    {currentQuestion.target_project && (
+      <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
+        🎯 {currentQuestion.target_project}
+      </span>
+    )}
+    {currentQuestion.technology_focus && (
+      <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-lg border border-purple-200 font-medium">
+        ⚡ {currentQuestion.technology_focus}
+      </span>
+    )}
+    {currentQuestion.expectedAnswerType === "code" && (
+      <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-lg border border-green-200 font-medium">
+        💻 Code Expected
+      </span>
+    )}
+  </div>
+</div>
 
               <div className="bg-slate-50 p-8 border-t border-slate-200">
 <form onSubmit={handleSubmitAnswer}>
@@ -2535,7 +3280,19 @@ const RoundIndicator = () => {
       <div className="flex items-center gap-2">
         <span className="text-xs font-bold text-slate-600 uppercase bg-slate-200 px-2 py-1 rounded">
 {(resolvedChallengeForEditor.language || "PYTHON").toUpperCase()}
+
         </span>
+        {resolvedChallengeForEditor.language === "cpp" && (
+  <span className="text-xs text-amber-600">
+    C++: Write a complete program with <code>main()</code> that reads stdin and prints output
+  </span>
+)}
+
+{resolvedChallengeForEditor.language === "python" && (
+  <span className="text-xs text-slate-500">
+    Python: You may define <code>solve()</code> or read from stdin
+  </span>
+)}
         <span className="text-xs text-slate-500">
           Write your solution below
         </span>
@@ -2563,6 +3320,7 @@ const RoundIndicator = () => {
     {/* --- MONACO EDITOR --- */}
     <div className="h-[400px] w-full relative">
 <Editor
+key={resolvedChallengeForEditor.language || "python"}
   height="100%"
   defaultLanguage={(resolvedChallengeForEditor.language || "python").toLowerCase()}
   value={answer}                          // <- controlled
@@ -2737,14 +3495,111 @@ const RoundIndicator = () => {
 
      
   ) : (
-  /* --- STANDARD TEXT AREA FOR NON-CODE QUESTIONS --- */
-  <textarea
-    value={answer}
-    onChange={(e) => setAnswer(e.target.value)}
-    placeholder="Type your detailed answer here... Be specific about your implementation and thought process."
-    rows={8}
-    className="w-full p-5 text-base bg-white text-slate-800 rounded-xl border-2 border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-y shadow-sm transition-all"
-  />
+/* --- HYBRID TEXT/VOICE INPUT (Only for non-technical questions) --- */
+  <div className="relative group animate-in fade-in slide-in-from-bottom-2">
+    
+    {/* Header Status Bar */}
+    <div className="flex justify-between items-center mb-2 px-1">
+      <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+        <Edit3 size={14} /> Your Answer
+      </label>
+      <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-2 transition-all ${
+        isListening ? "bg-indigo-100 text-indigo-700 border border-indigo-200" : "bg-slate-100 text-slate-500"
+      }`}>
+        {isListening ? (
+          <>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+            </span>
+Voice Active
+          </>
+        ) : (
+          "Type or Dictate"
+        )}
+      </div>
+    </div>
+
+    {/* Input Area Container */}
+    <div className={`relative rounded-xl border-2 transition-all bg-white overflow-hidden ${
+      isListening 
+        ? "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.15)]" 
+        : "border-slate-300 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10"
+    }`}>
+      
+      {/* The Text Area (Always Editable) */}
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder="Type your answer here... or click the microphone to speak."
+        rows={8}
+        className="w-full p-5 text-base text-slate-800 outline-none resize-none bg-transparent relative z-10 placeholder:text-slate-400"
+      />
+
+ {/* Floating Mic Button with Better Feedback */}
+<button
+  type="button"
+  onClick={handleMicToggle}
+  disabled={!isSupported}
+  className={`absolute bottom-4 right-4 p-4 rounded-full shadow-2xl transition-all z-30 flex items-center gap-2 font-bold group ${
+    !isSupported
+      ? "bg-slate-300 text-slate-500 cursor-not-allowed"
+      : isListening 
+        ? "bg-gradient-to-r from-rose-500 to-red-600 text-white hover:from-rose-600 hover:to-red-700 scale-110 ring-4 ring-rose-200" 
+        : "bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 hover:scale-105"
+  }`}
+  title={!isSupported ? "Speech recognition not supported" : isListening ? "Stop Recording (Click or press ESC)" : "Start Voice Input (Click or press Space)"}
+>
+  {isListening ? (
+    <>
+      <Square size={20} fill="currentColor" className="animate-pulse" />
+      <span className="text-sm pr-1">Stop</span>
+      <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+    </>
+  ) : (
+    <>
+      <Mic size={22} className="group-hover:scale-110 transition-transform" />
+      <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity">Speak</span>
+    </>
+  )}
+</button>
+
+{/* Live Transcript Overlay - Enhanced */}
+{isListening && transcriptBuffer && (
+  <div className="absolute bottom-20 left-4 right-4 z-20 animate-in slide-in-from-bottom-4">
+    <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md border border-white/10">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse animation-delay-150"></span>
+          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse animation-delay-300"></span>
+        </div>
+        <span className="text-xs font-bold uppercase text-red-400 tracking-wider">
+          Recording
+        </span>
+        <div className="ml-auto text-xs text-slate-400">
+          {transcriptBuffer.split(' ').length} words
+        </div>
+      </div>
+      <p className="text-base font-medium leading-relaxed text-slate-100">
+        {transcriptBuffer}
+        <span className="inline-block w-2 h-5 ml-1 align-middle bg-indigo-400 animate-pulse"/>
+      </p>
+    </div>
+  </div>
+)}
+    </div>
+
+    {/* Character Count Footer */}
+    <div className="mt-2 flex items-center justify-between text-xs text-slate-400 px-1">
+      <span className="flex items-center gap-1">
+        <Keyboard size={12} /> {answer.length} chars
+      </span>
+      <span>
+        {isListening ? "Processing voice..." : "Pro Tip: You can edit text while speaking"}
+      </span>
+    </div>
+  </div>
 )}
 
 {currentQuestion.expectedAnswerType === "code" && (
@@ -2885,25 +3740,36 @@ if (excalidrawAPI) {
     </div>
              
     {/* 👇 NEW: Round-by-round breakdown */}
-    {finalDecision.performanceMetrics && (
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        {Object.entries(finalDecision.performanceMetrics).map(([round, stats]: [string, any]) => (
-          <div key={round} className="bg-white p-4 rounded-lg border border-slate-200">
+ {finalDecision.performanceMetrics &&
+ typeof finalDecision.performanceMetrics === "object" &&
+ !("average_score" in finalDecision.performanceMetrics) &&
+ !("averageScore" in finalDecision.performanceMetrics) && (
+  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+    {Object.entries(finalDecision.performanceMetrics).map(
+      ([round, stats]: [string, any]) =>
+        typeof stats === "object" && stats !== null ? (
+          <div
+            key={round}
+            className="bg-white p-4 rounded-lg border border-slate-200"
+          >
             <div className="text-xs uppercase text-slate-500 font-bold mb-2 capitalize">
               {round} Round
             </div>
+
             <div className="text-2xl font-black text-slate-900">
-              {stats.questions || 0} Questions
+              {stats.questions ?? 0} Questions
             </div>
-            {stats.average_score !== undefined && (
+
+            {typeof stats.average_score === "number" && (
               <div className="text-sm text-slate-600 mt-1">
                 Avg: {Math.round(stats.average_score * 100)}%
               </div>
             )}
           </div>
-        ))}
-      </div>
+        ) : null
     )}
+  </div>
+)}
 
     {finalDecision.confidence && (
       <div className="text-sm text-slate-500 mt-5 font-medium text-center">
@@ -2972,7 +3838,7 @@ if (excalidrawAPI) {
         </p>
       </div>
     ) : roadmap ? (
-      <RoadmapDisplay plan={roadmap} />
+      <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
     ) : (
       <div className="text-center mt-8">
         <button 
@@ -2992,6 +3858,16 @@ if (excalidrawAPI) {
                 >
                   {showReport ? "Hide Full Transcript" : "View Full Transcript"}
                 </button>
+                {finalDecision?.reason && (
+  <button
+    onClick={() => speakText(finalDecision.reason)}
+    className="px-6 py-3 bg-white border-2 border-indigo-300 text-indigo-700 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+  >
+    <Volume2 size={18} />
+    Read Feedback Aloud
+  </button>
+)}
+
 <button
   onClick={generatePDF}
   className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl hover:shadow-xl font-bold transition-all shadow-md flex items-center gap-2"
@@ -3031,6 +3907,8 @@ if (excalidrawAPI) {
                     <button
                       className="px-4 py-2 rounded bg-indigo-600 text-white"
                       onClick={() => {
+                            localStorage.removeItem("active_interview_session");
+
                      window.location.reload();
 
                       }}

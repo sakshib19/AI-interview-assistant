@@ -3,13 +3,15 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const path = require('path');
 const multer = require("multer");
 const FormData = require("form-data");
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
 // Import auth functions - adjust path as needed
 const { signupUser, loginUser, verifyToken } = require("../Controller/auth");
 
@@ -21,8 +23,7 @@ const Session = require("../models/Session");
 const QA = require("../models/QA");
 const Resume = require("../models/Resume");
 const Decision = require("../models/Decision");
-
-// ---------- CONFIG ----------
+const swaggerDocument = YAML.load(path.join(__dirname, '../swagger.yaml'));// ---------- CONFIG ----------
 const corsOrigins = process.env.CORS_ORIGIN ?
   process.env.CORS_ORIGIN.split(",") :
   ["http://localhost:3000", "http://localhost:4000"];
@@ -35,6 +36,7 @@ const AI_API_KEY = process.env.AI_API_KEY || null;
 const AI_EXPECTS_RAW_BASE64 = false;
 
 // ---------- MIDDLEWARE ----------
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use(cors({
   origin: corsOrigins,
   credentials: true,
@@ -65,7 +67,6 @@ const limiter = rateLimit({
   max: parseInt(process.env.RATE_LIMIT_MAX || "300", 10),
 });
 app.use(limiter);
-
 // Multer config
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -478,7 +479,6 @@ app.post("/run-code", requireAuth, async (req, res) => {
     });
   }
 });
-
 
 // Auth
 app.post("/auth/signup", async (req, res) => {
@@ -932,22 +932,29 @@ const hintUsed = qaRec.metadata?.hint_used || false;
 
           const probeResp = await callAiProbe(probePayload);
           const parsedProbe = probeResp.parsed || {};
+const parentExpectedType = qaRec.expectedAnswerType; // 🔥 inherit parent
 
-          const newQa = await createQARecordDB(
-            sessionId,
-            parsedProbe.probe_question || "Can you explain your approach?",
-            parsedProbe.ideal_answer_outline || "",
-            parsedProbe.type === "coding_challenge" ? "code" : "text",
-            parsedProbe.difficulty || "medium",
-            userId,
-            {
-              ...qaRec.metadata,
-              is_probe: true,
-              probe_parent_qaId: qaRec.qaId,
-              round: roundInfo.current_round // Keep current round
-            }
-          );
+const expectedAnswerType =
+  parsedProbe.type === "coding_challenge"
+    ? "code"
+    : parentExpectedType === "code"
+    ? "code"
+    : "text";
 
+const newQa = await createQARecordDB(
+  sessionId,
+  parsedProbe.probe_question || "Can you explain your approach?",
+  parsedProbe.ideal_answer_outline || "",
+  expectedAnswerType,
+  parsedProbe.difficulty || "medium",
+  userId,
+  {
+    ...qaRec.metadata,
+    is_probe: true,
+    probe_parent_qaId: qaRec.qaId,
+    round: roundInfo.current_round
+  }
+);
           nextQuestion = {
             qaId: newQa.qaId,
             questionId: newQa.questionId,
@@ -1125,6 +1132,16 @@ const hintUsed = qaRec.metadata?.hint_used || false;
         ended = true;
       }
     }
+// 🔥 ENSURE FINAL DECISION IS ALWAYS PRESENT WHEN ENDED
+if (ended && !modelDecision) {
+  const decisionDoc = await Decision.findOne({ sessionId })
+    .sort({ decidedAt: -1 })
+    .lean();
+
+  if (decisionDoc) {
+    modelDecision = decisionDoc;
+  }
+}
 
     // ================= RESPONSE =================
     return res.json({
@@ -1313,8 +1330,10 @@ app.post("/interview/end", requireAuth, async (req, res) => {
 
     // 1. Gather Data
     const history = await buildQuestionHistory(sessionId);
-    const scores = history.map(r => r.score).filter(v => typeof v === 'number');
-    const avgScore = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    const scores = history.map(r => r.score).filter(v => typeof v === "number");
+    const avgScore = scores.length
+      ? scores.reduce((a, b) => a + b, 0) / scores.length
+      : 0;
 
     let decisionDoc = null;
     let extras = { endedAt: new Date(), status: "completed" };
@@ -1334,61 +1353,81 @@ app.post("/interview/end", requireAuth, async (req, res) => {
         verdict: "reject",
         confidence: 1.0,
         reason: extras.finalReason,
+        feedback_summary: extras.finalReason,
+        key_strengths: [],
         critical_weaknesses: ["Integrity violation suspected"],
         rawModelOutput: { terminated: true },
         performanceMetrics: { average_score: avgScore },
         decidedAt: new Date()
       });
-    } 
+    }
+
     // --- CASE B: MANUAL FINISH (Ask AI for Verdict) ---
     else {
-      // 👇 NEW: Call AI to get Strengths/Weaknesses even for partial interviews
       try {
         const decisionPayload = {
-             request_id: uuidv4(),
-             session_id: sessionId,
-             user_id: req.userId,
-             resume_summary: "", // Optional: fetch if needed
-             conversation: [],   // Optional
-             question_history: history,
-             token_budget: 2000,
-             accept_model_final: true 
+          request_id: uuidv4(),
+          session_id: sessionId,
+          user_id: req.userId,
+          resume_summary: "",
+          conversation: [],
+          question_history: history,
+          token_budget: 2000,
+          accept_model_final: true
         };
 
-        // Call Python Backend
         const aiDecisionResp = await callAiFinalizeDecision(decisionPayload);
         const aiData = aiDecisionResp.result?.parsed || {};
 
         decisionDoc = await Decision.create({
-            decisionId: uuidv4(),
-            sessionId,
-            decidedBy: "model",
-            verdict: aiData.verdict || (avgScore > 0.6 ? "hire" : "reject"), // Fallback to score
-            confidence: aiData.confidence || 0.5,
-            reason: aiData.reason || reason || "Candidate ended interview manually.",
-            feedback_summary: aiData.feedback_summary,
-            recommended_role: aiData.recommended_role,
-            key_strengths: aiData.key_strengths || [],
-            critical_weaknesses: aiData.critical_weaknesses || [],
-            performanceMetrics: aiDecisionResp.performance_metrics || { average_score: avgScore },
-            decidedAt: new Date()
+          decisionId: uuidv4(),
+          sessionId,
+          decidedBy: "model",
+          verdict: aiData.verdict || (avgScore > 0.6 ? "hire" : "reject"),
+          confidence: aiData.confidence || 0.5,
+          reason: aiData.reason || reason || "Candidate ended interview manually.",
+          feedback_summary: aiData.feedback_summary,
+          recommended_role: aiData.recommended_role,
+          key_strengths: aiData.key_strengths || [],
+          critical_weaknesses: aiData.critical_weaknesses || [],
+          performanceMetrics:
+            aiDecisionResp.performance_metrics || { average_score: avgScore },
+          decidedAt: new Date()
         });
 
         extras.finalVerdict = decisionDoc.verdict;
       } catch (aiErr) {
         console.warn("⚠️ Manual end AI decision failed:", aiErr.message);
-        // Fallback if AI fails
+
         decisionDoc = await Decision.create({
-            decisionId: uuidv4(),
-            sessionId,
-            decidedBy: "fallback",
-            verdict: avgScore > 0.6 ? "hire" : "reject",
-            confidence: 0.5,
-            reason: "Manual end (AI analysis unavailable)",
-            performanceMetrics: { average_score: avgScore },
-            decidedAt: new Date()
+          decisionId: uuidv4(),
+          sessionId,
+          decidedBy: "fallback",
+          verdict: avgScore > 0.6 ? "hire" : "reject",
+          confidence: 0.5,
+          reason: "Manual end (AI analysis unavailable)",
+          feedback_summary: "Interview ended manually. Final decision based on performance.",
+          key_strengths: [],
+          critical_weaknesses: [],
+          performanceMetrics: { average_score: avgScore },
+          decidedAt: new Date()
         });
       }
+    }
+
+    // 🔥 SAFETY GUARD — ensure decisionDoc exists
+    if (!decisionDoc) {
+      decisionDoc = await Decision.create({
+        decisionId: uuidv4(),
+        sessionId,
+        decidedBy: "system_fallback",
+        verdict: avgScore > 0.6 ? "hire" : "reject",
+        confidence: 0.5,
+        reason: "Interview ended.",
+        feedback_summary: "Final decision generated by system fallback.",
+        performanceMetrics: { average_score: avgScore },
+        decidedAt: new Date()
+      });
     }
 
     // 2. Update Session
@@ -1404,8 +1443,7 @@ app.post("/interview/end", requireAuth, async (req, res) => {
       totalQuestions: history.length,
       terminated_by_violation: !!terminated_by_violation,
       finalDecisionRef: decisionDoc._id,
-      // Send the actual decision data so frontend can display immediately
-      finalDecision: decisionDoc, 
+      finalDecision: decisionDoc,
       session: updatedSession
     });
 
@@ -1414,6 +1452,7 @@ app.post("/interview/end", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "failed_to_end_session" });
   }
 });
+
 app.get("/interview/session/:sessionId", requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -1501,37 +1540,52 @@ app.get("/admin/session/:id", requireAuth, async (req, res) => {
 app.post("/interview/proctor", requireAuth, async (req, res) => {
     try {
         const { sessionId, image } = req.body;
-        if (!sessionId || !image) return res.status(400).json({ error: "Missing data" });
+        
+        // Enhanced validation
+        if (!sessionId) {
+            console.warn("⚠️ Proctor: Missing sessionId");
+            return res.status(400).json({ error: "Missing sessionId" });
+        }
 
-        const session = await Session.findOne({ sessionId }).select("sessionId metadata").lean();
-        if (!session) return res.status(404).json({ error: "Session not found" });
+        const session = await Session.findOne({ sessionId }).select("sessionId metadata status").lean();
+        if (!session) {
+            console.warn("⚠️ Proctor: Session not found:", sessionId);
+            return res.status(404).json({ error: "Session not found" });
+        }
+
+        // CRITICAL: Don't process if interview is already completed
+        if (session.status === "completed" || session.status === "aborted") {
+            console.log(`🛑 Proctor: Session ${sessionId} already ${session.status} - ignoring`);
+            return res.json({ status: "session_ended", verified: false, message: "Interview already ended" });
+        }
+
+        // If no image, return success but log warning (don't create violation)
+        if (!image) {
+            console.warn("⚠️ Proctor: No image provided (camera may be initializing)");
+            return res.json({ status: "no_image", verified: true, message: "No frame available yet" });
+        }
 
         // Basic sanity check
         if (!isValidDataImage(image, 300)) {
-            return res.json({ status: "warning", message: "Live frame invalid" });
+            console.warn("⚠️ Proctor: Invalid image format");
+            return res.json({ status: "invalid_image", verified: true, message: "Frame validation failed (camera warming up)" });
         }
 
         try {
-            // ============================================================
-            // 1. CALL AI SERVICE (now returns 200 OK for violations too)
-            // ============================================================
+            // Call AI service
             const verifyPayload = {
                 session_id: sessionId, 
                 current_image: AI_EXPECTS_RAW_BASE64 ? stripDataPrefix(image) : image
             };
 
-            // This will now SUCCEED (200 OK) even if face verification fails
             const aiResponse = await aiClient.post("/verify_face", verifyPayload, { timeout: 10000 });
             const data = aiResponse.data;
 
-            // ============================================================
-            // 2. CHECK FOR VIOLATIONS IN THE 200 RESPONSE
-            // ============================================================
+            // Check for violations
             if (data.verified === false) {
                 const violationType = data.violation_type || "unknown_violation";
                 const errorMsg = data.error || "Verification failed";
 
-                // Format a readable reason for the database
                 let dbReason = errorMsg;
                 if (violationType === "prohibited_object") {
                     const items = data.objects ? data.objects.join(", ") : "unknown object";
@@ -1544,7 +1598,7 @@ app.post("/interview/proctor", requireAuth, async (req, res) => {
 
                 console.log(`⚠️ VIOLATION RECORDED (${violationType}): ${dbReason}`);
 
-                // 3. RECORD IN MONGODB
+                // Record in MongoDB
                 await Session.updateOne(
                     { sessionId },
                     {
@@ -1558,31 +1612,25 @@ app.post("/interview/proctor", requireAuth, async (req, res) => {
                     }
                 );
 
-                // 4. RETURN 200 OK TO FRONTEND (With verified: false)
-                // This prevents the frontend from freaking out and retrying
                 return res.json(data);
             }
 
-            // Success path (Verified: True)
+            // Success
             return res.json({ status: "success", verified: true, distance: data.distance });
 
         } catch (aiErr) {
-            // 5. REAL ERRORS (Network/Crash)
             console.error("❌ AI Service Error:", aiErr.message);
-            
-            // Only return 502 if the AI service is actually down/crashing
             return res.status(502).json({ 
                 status: "failed", 
                 verified: false, 
-                error: "AI service unavailable or timeout" 
+                error: "AI service unavailable" 
             });
         }
     } catch (err) {
         console.error("❌ Proctoring Error:", err.message);
-        return res.status(500).json({ error: "Proctoring internal error" });
+        return res.status(500).json({ error: "Internal error" });
     }
 });
-
 // 404 handler
 app.use((req, res) => {
   console.warn("⚠️ 404 Not Found:", req.method, req.path);

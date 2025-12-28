@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@deepgram/sdk": "^4.11.3",
     "@excalidraw/excalidraw": "^0.18.0",
     "@monaco-editor/react": "^4.7.0",
     "jspdf": "^3.0.4",
