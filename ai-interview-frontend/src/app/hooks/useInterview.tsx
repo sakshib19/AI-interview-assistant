@@ -49,6 +49,12 @@ export type InterviewAnswerResult = {
   elimination_reason?: string | null;
   is_probe?: boolean;
   metadata?: any;
+  technical_diagnosis?: {
+    win?: string;
+    gap?: { issue?: string; observed?: string; expected_level?: string };
+    fix?: { action?: string; resource_type?: string };
+    sub_topics?: any[];
+  };
 };
 
 export type PerformanceMetrics = {
@@ -169,7 +175,9 @@ const buildQuestionHistory = useCallback(() => {
     difficulty?: string,
     techStack?: string,
     existingSessionId?: string, // NEW: Accept existing session ID
-    existingQuestionData?: any  // NEW: Accept existing question data
+    existingQuestionData?: any,
+    config?: { role_title?: string; company_style?: string }
+      // NEW: Accept existing question data
   ) => {
     setError(null);
     setLastFeedback(null);
@@ -230,6 +238,8 @@ console.log("🧭 CURRENT QUESTION TYPE:", currentQuestion?.type);
         parsed_resume: resumeParsed ?? {},
         retrieved_chunks: [],
         allow_pii: false,
+        role_title: config?.role_title || jobTitle || "Backend Engineer",
+        company_style: config?.company_style || "FAANG"
       };
       if (resumeFileUrl) payload.resume_url = resumeFileUrl;
 
@@ -415,6 +425,7 @@ const submitAnswer = useCallback(
         eliminated: body.eliminated || false,
         elimination_reason: body.elimination_reason || null,
         is_probe: body.nextQuestion?.is_probe || false,
+        technical_diagnosis: rawResult.technical_diagnosis || rawResult.diagnosis || {}
       };
 
       // Capture feedback/improvement suggestions

@@ -232,9 +232,10 @@ async function getQAByQaId(qaId) {
         query.qaId = { $ne: excludeQaId };
     }
 
+
     // ✅ FIX: Added 'improvement' and 'rationale' to the selection string
-    const qaDocs = await QA.find(query)
-      .select("questionText candidateAnswer score verdict ideal_outline improvement rationale metadata.target_project metadata.type metadata.is_probe metadata.round expectedAnswerType askedAt playback_history")
+  const qaDocs = await QA.find(query)
+      .select("questionText candidateAnswer score verdict ideal_outline improvement rationale technical_diagnosis metadata.target_project metadata.type metadata.is_probe metadata.round expectedAnswerType askedAt playback_history")
       .sort({ askedAt: 1 })
       .lean();
 
@@ -266,6 +267,7 @@ async function getQAByQaId(qaId) {
         // ✅ These fields will now be populated with actual data
         improvement: r.improvement || r.metadata?.improvement || "", 
         rationale: r.rationale || "",
+        technical_diagnosis: r.technical_diagnosis || {},
         playback_history: r.playback_history || []
       };
     });
@@ -311,9 +313,11 @@ question_history: history.map(h => ({
         // Ensure we pass feedback if it exists (check rationale or improvement fields)
         feedback: h.feedback || h.rationale || h.improvement || "",
         type: h.type,
+    technical_diagnosis: h.technical_diagnosis || {},
         result: { 
-            improvement: h.feedback || h.improvement || "" 
-        }  
+            improvement: h.feedback || h.improvement || "",
+            technical_diagnosis: h.technical_diagnosis || {} 
+        }
           }))
     };
 console.log(`🗺️ Generating roadmap for session ${sessionId}...`);  
@@ -704,7 +708,12 @@ app.post("/interview/start", requireAuth, async (req, res) => {
 question_history: await buildQuestionHistory(session.sessionId),
             token_budget: 3000,
             allow_pii: !!body.allow_pii,
-            options: { return_prompt: false, temperature: 0.1 }
+            options: { 
+                return_prompt: false, 
+                temperature: 0.1,
+                company_style: body.company_style || "FAANG", // From frontend
+                role_title: body.role_title || "Backend Engineer" // From frontend
+            }
         };
 
         const aiResp = await callAiGenerateQuestion(aiPayload);
@@ -895,6 +904,7 @@ const hintUsed = qaRec.metadata?.hint_used || false;
       improvement: validated.feedback_for_candidate || validated.mentor_tip || validated.follow_up_probe || null,
       red_flags_detected: validated.red_flags_detected || [],
       missing_elements: validated.missing_elements || [],
+      technical_diagnosis: validated.technical_diagnosis || {},
       needsHumanReview: aiScoreResp.in_gray_zone || false,
       gradedAt: new Date(),
       metadata: {
@@ -1156,7 +1166,8 @@ if (ended && !modelDecision) {
           score: overallScore, 
           verdict: validated.verdict, 
           improvement: scoreUpdate.improvement, 
-          rationale: validated.rationale 
+          rationale: validated.rationale ,
+          technical_diagnosis: validated.technical_diagnosis || {}
       },
       nextQuestion,
       ended,
