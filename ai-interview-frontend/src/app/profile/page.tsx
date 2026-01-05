@@ -1,25 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useProfile, DashboardData } from "../hooks/useProfile";
 import { useAuth } from "../context/AuthContext";
-import PerformanceChart from "./PerformanceChart";
+import SessionOverview from "./components/SessionOverview";
+import RoundWiseProgress from "./components/RoundWiseProgress";
+import IntegrityProctoringLog from "./components/IntegrityProctoringLog";
+import PerformanceInsights from "./components/PerformanceInsights";
+import ExportReports from "./components/ExportReports";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
-/* ================= TYPES ================= */
+// --- TYPES ALIGNED WITH BACKEND SCHEMA ---
 
-type RoundSummary = {
-  averageScore: number | null;
-  feedback: string | null;
+export type ViolationData = {
+  id: string;
+  at: string;     // Matches 'at' in your DB events array
+  type: string;   // 'violation', 'face_mismatch', etc.
+  reason: string; // Descriptive reason from DB
+  action?: string; // 'warning' or 'terminate'
 };
 
-type SessionSummary = {
+export type RoundData = {
+  roundType: "screening" | "technical" | "behavioral";
+  questionCount: number;
+  averageScore: number;
+  status: "Pass" | "Weak" | "Failed";
+  transitionReason?: string;
+};
+
+export type PerformanceData = {
+  strongAreas: string[];
+  weakAreas: { skill: string; severity: "Low" | "Medium" | "High" }[];
+  consistency: number;
+  variance: number;
+  recommendations: string[];
+};
+
+export type SessionDetail = {
   sessionId: string;
-  date: string;
+  finalVerdict: "Hire" | "Reject" | "Pending";
+  confidence: number;
+  duration: number;
+  totalQuestions: number;
+  violationCount: number;
+  startedAt: string;
+  endedAt: string;
   rounds: {
-    screening: RoundSummary | null;
-    technical: RoundSummary | null;
-    behavioral: RoundSummary | null;
+    screening?: RoundData;
+    technical?: RoundData;
+    behavioral?: RoundData;
   };
+  violations: ViolationData[]; // Mapped from backend 'events'
+  performanceInsights?: PerformanceData;
 };
 
 export default function ProfilePage() {
@@ -29,155 +61,202 @@ export default function ProfilePage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for collapsible sections
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(["overview", "rounds", "integrity"])
+  );
+
+  // --- TOGGLE FUNCTION (Defined inside component scope) ---
+  const toggleSection = (section: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(section)) {
+      newExpanded.delete(section);
+    } else {
+      newExpanded.add(section);
+    }
+    setExpandedSections(newExpanded);
+  };
 
   useEffect(() => {
     if (!token) return;
-
     fetchDashboard()
-      .then(setData)
-      .catch(() => setError("Unable to load profile dashboard"))
+      .then((responseData) => {
+        setData(responseData);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to load dashboard");
+      })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, fetchDashboard]);
 
-  if (!token) return <p className="p-8">Not logged in</p>;
-  if (loading) return <p className="p-8">Loading dashboard…</p>;
-  if (error) return <p className="p-8 text-red-600">{error}</p>;
-  if (!data) return null;
+  // Transform backend data to frontend format
+  const selectedSession = useMemo<SessionDetail | null>(() => {
+    if (!data?.interviewHistory?.length) return null;
+    
+    // 1. Get the actual session from backend response
+    const firstSession = data.interviewHistory[0];
+    if (!firstSession.date) return null;
+    
+    // Helper to format round data
+    const transformRound = (round: any, roundType: "screening" | "technical" | "behavioral") => {
+      if (!round || round.averageScore === null) return undefined;
+      const score = round.averageScore;
+      return {
+        roundType,
+        questionCount: 0,
+        averageScore: score,
+        status: score >= 0.7 ? "Pass" : score >= 0.5 ? "Weak" : "Failed",
+        transitionReason: round.feedback || undefined
+      };
+    };
+    
+    // 2. Map backend fields to frontend types
+    return {
+        sessionId: firstSession.sessionId,
+        finalVerdict: firstSession.violationCount > 10 ? "Reject" : "Hire",
+        confidence: 85,
+        duration: 45,
+        totalQuestions: firstSession.qaIds?.length || 0,
+        
+        // --- KEY FIX: Map actual events array from backend ---
+        violationCount: firstSession.violationCount || 0,
+        violations: firstSession.events || [], 
+        // ----------------------------------------------------
 
-  const { user, stats, interviewHistory } = data;
+        startedAt: firstSession.date,
+        rounds: {
+          screening: transformRound(firstSession.rounds?.screening, "screening"),
+          technical: transformRound(firstSession.rounds?.technical, "technical"),
+          behavioral: transformRound(firstSession.rounds?.behavioral, "behavioral")
+        },
+        // Static insights for now (unless your backend sends this)
+        performanceInsights: {
+          strongAreas: ["Problem-solving", "Code Logic", "Communication"],
+          weakAreas: [{ skill: "Optimization", severity: "Medium" }],
+          consistency: 0.82,
+          variance: 0.15,
+          recommendations: ["Review recursive parsing techniques"]
+        }
+    } as SessionDetail;
+  }, [data]);
 
-  const bestScore =
-    interviewHistory.length > 0
-      ? Math.max(
-          ...interviewHistory.flatMap((s: SessionSummary) =>
-            Object.values(s.rounds)
-              .filter(Boolean)
-              .map(r => r!.averageScore ?? 0)
-          )
-        ).toFixed(2)
-      : "N/A";
+  if (!token) return <p className="p-8 text-gray-300">Not logged in</p>;
+  if (loading) return <p className="p-8 text-gray-300 animate-pulse">Loading dashboard…</p>;
+  if (error || !data || !selectedSession) return <p className="p-8 text-red-400">Error: {error || "No data available"}</p>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-sky-50 to-purple-50">
-
-      {/* ================= TOP BAR ================= */}
-      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-indigo-100 px-10 py-5 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-            Profile Dashboard
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Interview analytics & performance insights
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="font-semibold text-gray-900">{user.name}</p>
-            <p className="text-sm text-gray-500">{user.email}</p>
+    <div className="min-h-screen bg-gray-900 text-white pb-20">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-indigo-400">Interview Performance Profile</h1>
+            <p className="text-sm text-gray-400 mt-1">Electronics & Instrumentation • NIT Rourkela</p>
           </div>
-
-          <div className="h-10 w-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold uppercase">
-            {user.name?.[0]}
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="font-semibold">{data.user.name}</p>
+              <p className="text-xs text-indigo-300">{data.user.email}</p>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold">
+              {data.user.name?.[0]}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ================= STATS ================= */}
-      <div className="px-10 pt-10 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Total Interviews" value={stats.totalInterviews} />
-        <StatCard title="Average Score" value={stats.averageScore} />
-        <StatCard title="Best Score" value={bestScore} />
-      </div>
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        {/* 1. Session Overview */}
+        <SectionWrapper
+          title="Executive Summary"
+          sectionId="overview"
+          expanded={expandedSections.has("overview")}
+          onToggle={toggleSection}
+        >
+          <SessionOverview session={selectedSession} />
+        </SectionWrapper>
 
-      {/* ================= PERFORMANCE CHART ================= */}
-      <div className="px-10 mt-10">
-        <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-indigo-900 mb-4">
-            Performance Trend Across Sessions
-          </h2>
+        {/* 2. Round-Wise Progress */}
+        <SectionWrapper
+          title="Round-Wise Competency"
+          sectionId="rounds"
+          expanded={expandedSections.has("rounds")}
+          onToggle={toggleSection}
+        >
+          <RoundWiseProgress rounds={selectedSession.rounds} />
+        </SectionWrapper>
 
-          <PerformanceChart sessions={interviewHistory} />
-        </div>
-      </div>
+        {/* 3. Integrity & Proctoring Log */}
+        <SectionWrapper
+          title="Integrity & Proctoring Log"
+          sectionId="integrity"
+          expanded={expandedSections.has("integrity")}
+          onToggle={toggleSection}
+        >
+          <IntegrityProctoringLog violations={selectedSession.violations} />
+        </SectionWrapper>
 
-      {/* ================= PAST SESSIONS ================= */}
-      <div className="px-10 pb-16 mt-12">
-        <h2 className="text-2xl font-semibold mb-6 text-gray-900">
-          Past Interview Sessions
-        </h2>
+        {/* 4. Performance Insights */}
+        <SectionWrapper
+          title="AI Skill Analysis"
+          sectionId="insights"
+          expanded={expandedSections.has("insights")}
+          onToggle={toggleSection}
+        >
+          <PerformanceInsights insights={selectedSession.performanceInsights} />
+        </SectionWrapper>
 
-        {interviewHistory.length === 0 ? (
-          <div className="bg-white p-6 rounded-xl shadow text-gray-500">
-            No interviews yet
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {interviewHistory.map((session: SessionSummary, idx: number) => (
-              <div
-                key={session.sessionId}
-                className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <p className="text-lg font-semibold text-gray-900">
-                    Session #{idx + 1}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {new Date(session.date).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {(["screening", "technical", "behavioral"] as const).map(
-                    round => {
-                      const r = session.rounds[round];
-                      if (!r) return null;
-
-                      return (
-                        <div
-                          key={round}
-                          className="rounded-xl p-5 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100"
-                        >
-                          <p className="font-semibold text-indigo-800 capitalize mb-2">
-                            {round} round
-                          </p>
-
-                          <p className="text-sm mb-3">
-                            <span className="text-gray-500">Score:</span>{" "}
-                            <span className="font-bold text-indigo-700 text-lg">
-                              {r.averageScore}
-                            </span>
-                          </p>
-
-                          {r.feedback && (
-                            <p className="text-sm text-gray-700 leading-relaxed">
-                              <span className="font-medium">Feedback:</span>{" "}
-                              {r.feedback}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* 5. Export & Reports */}
+        <SectionWrapper
+          title="Actions & Documentation"
+          sectionId="export"
+          expanded={expandedSections.has("export")}
+          onToggle={toggleSection}
+        >
+          <ExportReports session={selectedSession} />
+        </SectionWrapper>
       </div>
     </div>
   );
 }
 
-/* ================= STAT CARD ================= */
-function StatCard({ title, value }: { title: string; value: any }) {
+// --- SECTION WRAPPER COMPONENT ---
+
+function SectionWrapper({ 
+  title, 
+  sectionId, 
+  expanded, 
+  onToggle, 
+  children 
+}: { 
+  title: string; 
+  sectionId: string; 
+  expanded: boolean; 
+  onToggle: (id: string) => void; 
+  children: React.ReactNode 
+}) {
   return (
-    <div className="relative bg-white rounded-2xl p-6 border border-indigo-100 shadow-sm hover:shadow-lg transition">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-t-2xl" />
-      <p className="text-sm text-gray-500">{title}</p>
-      <p className="text-4xl font-extrabold mt-2 text-indigo-700">
-        {value ?? "N/A"}
-      </p>
+    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl transition-all duration-200">
+      <button
+        onClick={() => onToggle(sectionId)}
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-700/40 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-1.5 h-6 rounded-full ${expanded ? 'bg-indigo-500' : 'bg-gray-600'}`} />
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        </div>
+        {expanded ? (
+          <ChevronUp className="w-5 h-5 text-gray-400" />
+        ) : (
+          <ChevronDown className="w-5 h-5 text-gray-400" />
+        )}
+      </button>
+      {expanded && (
+        <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-300">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

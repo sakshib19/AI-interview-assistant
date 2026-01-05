@@ -28,7 +28,8 @@ export function AuthProvider({ children }: any) {
   // LOGIN
   // -----------------
   async function loginUser(email: string, password: string) {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/login`, {
+    const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+    const res = await fetch(`${API_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -50,7 +51,8 @@ export function AuthProvider({ children }: any) {
   // SIGNUP
   // -----------------
   async function signupUser(name: string, email: string, password: string) {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/signup`, {
+    const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+    const res = await fetch(`${API_URL}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, password }),
