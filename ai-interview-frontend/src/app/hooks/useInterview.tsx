@@ -43,10 +43,18 @@ export type InterviewAnswerResult = {
     current: string;
     progress: Record<string, any>;
     section_counts?: Record<string, number>;
+    round_history?: Record<string, any>;
   };
   eliminated?: boolean;
   elimination_reason?: string | null;
   is_probe?: boolean;
+  metadata?: any;
+  technical_diagnosis?: {
+    win?: string;
+    gap?: { issue?: string; observed?: string; expected_level?: string };
+    fix?: { action?: string; resource_type?: string };
+    sub_topics?: any[];
+  };
 };
 
 export type PerformanceMetrics = {
@@ -55,7 +63,7 @@ export type PerformanceMetrics = {
   last_score: number | null;
   consecutive_fails: number;
   consecutive_wins: number;
-  trend: "improving" | "declining" | "stable" | "insufficient_data" | "unknown";
+trend: string;
   confidence: number;
   score_variance?: number;
 };
@@ -167,7 +175,9 @@ const buildQuestionHistory = useCallback(() => {
     difficulty?: string,
     techStack?: string,
     existingSessionId?: string, // NEW: Accept existing session ID
-    existingQuestionData?: any  // NEW: Accept existing question data
+    existingQuestionData?: any,
+    config?: { role_title?: string; company_style?: string }
+      // NEW: Accept existing question data
   ) => {
     setError(null);
     setLastFeedback(null);
@@ -228,6 +238,8 @@ console.log("🧭 CURRENT QUESTION TYPE:", currentQuestion?.type);
         parsed_resume: resumeParsed ?? {},
         retrieved_chunks: [],
         allow_pii: false,
+        role_title: config?.role_title || jobTitle || "Backend Engineer",
+        company_style: config?.company_style || "FAANG"
       };
       if (resumeFileUrl) payload.resume_url = resumeFileUrl;
 
@@ -335,7 +347,7 @@ const submitAnswer = useCallback(
       let whiteboard_snapshot = null;      // 🆕 Added
         let user_time_complexity = null;       // 🆕 Added
         let user_space_complexity = null;      // 🆕 Added
-      
+      let playback_history = null;
       if (typeof candidateAnswerOrPayload === "string") {
         candidateAnswer = candidateAnswerOrPayload;
       } else {
@@ -347,6 +359,7 @@ const submitAnswer = useCallback(
         whiteboard_snapshot = candidateAnswerOrPayload.whiteboard_snapshot || null;
           user_time_complexity = candidateAnswerOrPayload.user_time_complexity || null;
           user_space_complexity = candidateAnswerOrPayload.user_space_complexity || null;
+          playback_history = candidateAnswerOrPayload.playback_history || null; // 👈 NEW: Extract from payload
       }
 
       const conv = buildConversationFromHistory();
@@ -373,7 +386,8 @@ const submitAnswer = useCallback(
         whiteboard_elements,
         whiteboard_snapshot,
           user_time_complexity,
-          user_space_complexity
+          user_space_complexity,
+          playback_history
       };
 
       const res = await fetch(`${API}/interview/answer`, {
@@ -407,9 +421,11 @@ const submitAnswer = useCallback(
         
         // 👇 NEW: Capture round info and elimination
         round_info: body.round_info,
+        metadata: body.metadata || body.round_info,
         eliminated: body.eliminated || false,
         elimination_reason: body.elimination_reason || null,
         is_probe: body.nextQuestion?.is_probe || false,
+        technical_diagnosis: rawResult.technical_diagnosis || rawResult.diagnosis || {}
       };
 
       // Capture feedback/improvement suggestions
@@ -512,6 +528,8 @@ const submitAnswer = useCallback(
   },
   [sessionId, currentQuestion, buildConversationFromHistory, buildQuestionHistory, resumeParsed, token, getAuthHeaders]
 );
+// hooks/useInterview.tsx
+
 const resumeSession = useCallback(async (storedSessionId: string) => {
     if (!token) return;
     setLoading(true);
@@ -530,28 +548,42 @@ const resumeSession = useCallback(async (storedSessionId: string) => {
       setSessionId(data.sessionId);
       setStage(data.stage);
       
-      // Map backend history to frontend format
+      // 1. Map History
       if (data.history) {
         setHistory(data.history.map((h: any) => ({
              q: { 
+                 // Fix: Ensure we grab the ID from history items too
+                 questionId: h.qaId || h.questionId || h.id, 
                  questionText: h.question, 
                  type: h.type,
                  target_project: h.target_project 
              }, 
              a: h.answer,
-             result: { 
-                 score: h.score, 
-                 verdict: h.verdict 
-             }
+             result: h.result
         })));
       }
 
+      // 2. Map Current Question (THE FIX)
       if (data.currentQuestion) {
-         setCurrentQuestion({
+         // We look for ANY field that might hold the ID
+         const validId = data.currentQuestion.qaId || data.currentQuestion.questionId || data.currentQuestion.id || data.currentQuestion._id;
+         
+         const normalizedQuestion: InterviewQuestion = {
              ...data.currentQuestion,
+             // FORCE the ID to exist. This prevents the "undefined" error.
+             questionId: validId, 
+             qaId: validId, // Set both to be safe
+             
+             // Map other fields carefully
+             questionText: data.currentQuestion.question || data.currentQuestion.questionText || "",
+             type: data.currentQuestion.type || "conceptual",
+             expectedAnswerType: data.currentQuestion.expected_answer_type || data.currentQuestion.expectedAnswerType || "medium",
              raw: data.currentQuestion,
-             coding_challenge: data.currentQuestion.coding_challenge
-         });
+             coding_challenge: data.currentQuestion.coding_challenge || data.currentQuestion.challenge
+         };
+
+         console.log("✅ Hydrated Question ID:", normalizedQuestion.questionId);
+         setCurrentQuestion(normalizedQuestion);
       }
     } catch (e) {
       console.error("Resume error:", e);

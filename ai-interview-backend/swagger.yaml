@@ -1,0 +1,1040 @@
+openapi: 3.0.0
+info:
+  title: AI Interview Assistant API
+  description: Comprehensive API for AI-powered interview management with proctoring, code execution, and multi-round assessment.
+  version: 2.0.0
+  contact:
+    name: API Support
+    email: support@interview-ai.com
+
+servers:
+  - url: http://localhost:4000
+    description: Local Development Server
+  - url: https://api.interview-ai.com
+    description: Production Server
+
+# Security Definitions
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login or /auth/signup
+
+  schemas:
+    # Authentication Schemas
+    SignupRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "SecurePass123!"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT authentication token
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+
+    # Interview Schemas
+    StartInterviewRequest:
+      type: object
+      required:
+        - referenceImage
+      properties:
+        referenceImage:
+          type: string
+          description: Base64-encoded data URL of candidate's face (data:image/jpeg;base64,...)
+          example: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+        resume_summary:
+          type: string
+          description: Parsed resume text or summary
+        retrieved_chunks:
+          type: array
+          items:
+            type: string
+        allow_pii:
+          type: boolean
+          default: false
+
+    StartInterviewResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        firstQuestion:
+          $ref: '#/components/schemas/Question'
+        proctoring:
+          type: object
+          properties:
+            referenceRegistered:
+              type: boolean
+            aiRegistrationStatus:
+              type: string
+              enum: [registered, failed]
+        round_info:
+          $ref: '#/components/schemas/RoundInfo'
+
+    Question:
+      type: object
+      properties:
+        qaId:
+          type: string
+          format: uuid
+        questionId:
+          type: string
+          format: uuid
+        questionText:
+          type: string
+        expectedAnswerType:
+          type: string
+          enum: [text, code, system_design]
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        ideal_outline:
+          type: string
+        target_project:
+          type: string
+          nullable: true
+        technology_focus:
+          type: string
+          nullable: true
+        red_flags:
+          type: array
+          items:
+            type: string
+        coding_challenge:
+          $ref: '#/components/schemas/CodingChallenge'
+        is_probe:
+          type: boolean
+        round:
+          type: string
+          enum: [screening, technical, behavioral]
+
+    CodingChallenge:
+      type: object
+      nullable: true
+      properties:
+        problem_statement:
+          type: string
+        constraints:
+          type: array
+          items:
+            type: string
+        test_cases:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestCase'
+        hints:
+          type: array
+          items:
+            type: string
+        starter_code:
+          type: string
+
+    TestCase:
+      type: object
+      properties:
+        input:
+          type: string
+        expected:
+          type: string
+        description:
+          type: string
+
+    AnswerRequest:
+      type: object
+      required:
+        - sessionId
+        - candidateAnswer
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        qaId:
+          type: string
+          format: uuid
+        questionId:
+          type: string
+          format: uuid
+        questionText:
+          type: string
+        candidateAnswer:
+          oneOf:
+            - type: string
+            - type: object
+        question_type:
+          type: string
+          enum: [text, code, system_design]
+        code_execution_result:
+          type: object
+          nullable: true
+        whiteboard_data:
+          type: array
+          items:
+            type: object
+          nullable: true
+        whiteboard_snapshot:
+          type: string
+          nullable: true
+        user_time_complexity:
+          type: string
+          nullable: true
+        user_space_complexity:
+          type: string
+          nullable: true
+        playback_history:
+          type: array
+          items:
+            type: object
+        resume_summary:
+          type: string
+        allow_pii:
+          type: boolean
+
+    AnswerResponse:
+      type: object
+      properties:
+        validated:
+          type: object
+          properties:
+            overall_score:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+            verdict:
+              type: string
+              enum: [excellent, strong, acceptable, weak, poor]
+        result:
+          type: object
+          properties:
+            score:
+              type: number
+            verdict:
+              type: string
+            improvement:
+              type: string
+            rationale:
+              type: string
+        nextQuestion:
+          $ref: '#/components/schemas/Question'
+        ended:
+          type: boolean
+        eliminated:
+          type: boolean
+        elimination_reason:
+          type: string
+          nullable: true
+        is_final:
+          type: boolean
+        final_decision:
+          $ref: '#/components/schemas/FinalDecision'
+        needs_human_review:
+          type: boolean
+        in_gray_zone:
+          type: boolean
+        round_info:
+          $ref: '#/components/schemas/RoundInfo'
+        probe_decision:
+          type: object
+
+    RoundInfo:
+      type: object
+      properties:
+        current:
+          type: string
+          enum: [screening, technical, behavioral, complete]
+        progress:
+          type: object
+          properties:
+            screening:
+              $ref: '#/components/schemas/RoundProgress'
+            technical:
+              $ref: '#/components/schemas/RoundProgress'
+            behavioral:
+              $ref: '#/components/schemas/RoundProgress'
+        section_counts:
+          type: object
+
+    RoundProgress:
+      type: object
+      properties:
+        questions:
+          type: integer
+        status:
+          type: string
+          enum: [not_started, in_progress, completed]
+
+    FinalDecision:
+      type: object
+      properties:
+        decisionId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+        decidedBy:
+          type: string
+          enum: [model, system, fallback]
+        verdict:
+          type: string
+          enum: [hire, maybe, reject]
+        confidence:
+          type: number
+          format: float
+        reason:
+          type: string
+        feedback_summary:
+          type: string
+        recommended_role:
+          type: string
+          nullable: true
+        key_strengths:
+          type: array
+          items:
+            type: string
+        critical_weaknesses:
+          type: array
+          items:
+            type: string
+        performanceMetrics:
+          type: object
+
+    # Code Execution Schemas
+    RunCodeRequest:
+      type: object
+      required:
+        - code
+      properties:
+        language:
+          type: string
+          default: "python"
+          example: "python"
+        code:
+          type: string
+          example: "def solution(arr):\n    return sum(arr)"
+        test_cases:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestCase'
+        stdin:
+          type: string
+        expected_output:
+          type: string
+        coding_challenge:
+          $ref: '#/components/schemas/CodingChallenge'
+
+    RunCodeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        allPassed:
+          type: boolean
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              input:
+                type: string
+              expected:
+                type: string
+              stdout:
+                type: string
+              success:
+                type: boolean
+              passed:
+                type: boolean
+              error:
+                type: string
+                nullable: true
+
+    # Proctoring Schemas
+    RegisterFaceRequest:
+      type: object
+      required:
+        - sessionId
+        - image
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        image:
+          type: string
+          description: Base64-encoded data URL (data:image/jpeg;base64,...)
+
+    RegisterFaceResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        status:
+          type: string
+          enum: [registered, rejected]
+        message:
+          type: string
+
+    ProctorRequest:
+      type: object
+      required:
+        - sessionId
+        - image
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        image:
+          type: string
+          description: Current frame as base64 data URL
+
+    ProctorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        verified:
+          type: boolean
+        distance:
+          type: number
+          nullable: true
+        violation_type:
+          type: string
+          enum: [face_mismatch, multiple_people, prohibited_object, unknown_violation]
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        person_count:
+          type: integer
+          nullable: true
+        objects:
+          type: array
+          items:
+            type: string
+          nullable: true
+
+    ViolationRequest:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          example: "screen-change"
+        timestamp:
+          type: string
+          format: date-time
+        action:
+          type: string
+          enum: [warning, terminate]
+
+    ViolationResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        event:
+          type: object
+        violationCount:
+          type: integer
+        terminated:
+          type: boolean
+        message:
+          type: string
+        finalDecisionRef:
+          type: string
+          nullable: true
+
+    # Hint Schema
+    HintRequest:
+      type: object
+      required:
+        - sessionId
+        - questionId
+        - questionText
+      properties:
+        sessionId:
+          type: string
+        questionId:
+          type: string
+        questionText:
+          type: string
+        type:
+          type: string
+        currentAnswer:
+          type: string
+
+    HintResponse:
+      type: object
+      properties:
+        hint:
+          type: string
+
+    # Roadmap Schema
+    RoadmapRequest:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+
+    # Resume Processing
+    ResumeResponse:
+      type: object
+      properties:
+        parsed:
+          type: object
+          description: Parsed resume data (structure varies)
+        resumeId:
+          type: string
+
+    # Session Schema
+    SessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        stage:
+          type: string
+          enum: [idle, running, done]
+        currentQuestion:
+          $ref: '#/components/schemas/Question'
+        history:
+          type: array
+          items:
+            type: object
+        round_info:
+          $ref: '#/components/schemas/RoundInfo'
+
+    # Error Schemas
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: string
+
+# Global Security
+security:
+  - bearerAuth: []
+
+# API Paths
+paths:
+  # ==================== HEALTH & TEST ====================
+  /health:
+    get:
+      summary: Health Check
+      description: Check if the backend server is running
+      security: []
+      tags:
+        - System
+      responses:
+        '200':
+          description: Server is operational
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "backend running"
+                  ai_service:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /test:
+    get:
+      summary: Simple Test Endpoint
+      security: []
+      tags:
+        - System
+      responses:
+        '200':
+          description: Test successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Server is working!"
+
+  # ==================== AUTHENTICATION ====================
+  /auth/signup:
+    post:
+      summary: Register New User
+      description: Create a new user account and return JWT token
+      security: []
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation error or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      summary: User Login
+      description: Authenticate user and return JWT token
+      security: []
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== RESUME PROCESSING ====================
+  /process-resume:
+    post:
+      summary: Parse Resume File
+      description: Upload and parse resume (PDF, DOCX, or TXT)
+      tags:
+        - Resume
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Resume file (PDF, DOCX, or TXT, max 10MB)
+      responses:
+        '201':
+          description: Resume parsed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeResponse'
+        '400':
+          description: Invalid file type or missing file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Parsing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== INTERVIEW FLOW ====================
+  /interview/start:
+    post:
+      summary: Start New Interview Session
+      description: Initialize interview with face registration and first question
+      tags:
+        - Interview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartInterviewRequest'
+      responses:
+        '200':
+          description: Interview started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartInterviewResponse'
+        '400':
+          description: Invalid reference image or face registration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /interview/answer:
+    post:
+      summary: Submit Answer to Current Question
+      description: Submit candidate's answer, get score, and receive next question (or final decision)
+      tags:
+        - Interview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+      responses:
+        '200':
+          description: Answer processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerResponse'
+        '400':
+          description: Missing required fields
+        '404':
+          description: Session or QA record not found
+        '500':
+          description: Internal server error
+
+  /interview/hint:
+    post:
+      summary: Request Hint for Current Question
+      description: Get AI-generated hint (marks question for scoring penalty)
+      tags:
+        - Interview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HintRequest'
+      responses:
+        '200':
+          description: Hint generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HintResponse'
+        '400':
+          description: Missing fields
+        '502':
+          description: AI service unavailable
+
+  /interview/end:
+    post:
+      summary: End Interview Session
+      description: Finalize interview and generate final decision
+      tags:
+        - Interview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sessionId
+              properties:
+                sessionId:
+                  type: string
+                reason:
+                  type: string
+                terminated_by_violation:
+                  type: boolean
+      responses:
+        '200':
+          description: Interview ended successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  sessionId:
+                    type: string
+                  finalScore:
+                    type: number
+                  totalQuestions:
+                    type: integer
+                  terminated_by_violation:
+                    type: boolean
+                  finalDecisionRef:
+                    type: string
+                  finalDecision:
+                    $ref: '#/components/schemas/FinalDecision'
+        '404':
+          description: Session not found
+
+  /interview/roadmap:
+    post:
+      summary: Generate Learning Roadmap
+      description: Create personalized learning roadmap based on interview performance
+      tags:
+        - Interview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoadmapRequest'
+      responses:
+        '200':
+          description: Roadmap generated
+        '400':
+          description: Missing sessionId
+        '502':
+          description: AI generation failed
+
+  /interview/session/{sessionId}:
+    get:
+      summary: Resume Interrupted Session
+      description: Retrieve session state to continue interrupted interview
+      tags:
+        - Interview
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session state retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '404':
+          description: Session not found
+
+  # ==================== PROCTORING ====================
+  /interview/register-face:
+    post:
+      summary: Register Reference Face Image
+      description: Explicitly register candidate's face for verification (called before /interview/start in some flows)
+      tags:
+        - Proctoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterFaceRequest'
+      responses:
+        '200':
+          description: Face registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterFaceResponse'
+        '400':
+          description: Invalid image or AI rejected
+        '404':
+          description: Session not found
+        '502':
+          description: AI service error
+
+  /interview/proctor:
+    post:
+      summary: Verify Face & Detect Objects
+      description: Real-time proctoring check (face match, multiple people, prohibited objects)
+      tags:
+        - Proctoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProctorRequest'
+      responses:
+        '200':
+          description: Proctoring check completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProctorResponse'
+        '400':
+          description: Invalid request
+        '404':
+          description: Session not found
+        '502':
+          description: AI service unavailable
+
+  /interview/violation:
+    post:
+      summary: Record Integrity Violation
+      description: Log violations (screen switching, tab changes, etc.) and auto-terminate if threshold exceeded
+      tags:
+        - Proctoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViolationRequest'
+      responses:
+        '200':
+          description: Violation recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViolationResponse'
+        '400':
+          description: Missing sessionId
+        '404':
+          description: Session not found
+
+  # ==================== CODE EXECUTION ====================
+  /run-code:
+    post:
+      summary: Execute Code in Sandbox
+      description: Run code against test cases and return results
+      tags:
+        - Code Execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCodeRequest'
+      responses:
+        '200':
+          description: Code executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunCodeResponse'
+        '500':
+          description: Execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== ADMIN ====================
+  /admin/session/{id}:
+    get:
+      summary: Get Full Session Details (Admin)
+      description: Retrieve complete session data including all QA records
+      tags:
+        - Admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session data retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    type: object
+                  qas:
+                    type: array
+                    items:
+                      type: object
+        '404':
+          description: Session not found
+        '500':
+          description: Internal error
+
+  # ==================== SWAGGER DOCS ====================
+  /api-docs:
+    get:
+      summary: Swagger UI Documentation
+      description: Interactive API documentation
+      security: []
+      tags:
+        - System
+      responses:
+        '200':
+          description: Swagger UI rendered
+
+tags:
+  - name: System
+    description: Health checks and system endpoints
+  - name: Authentication
+    description: User registration and login
+  - name: Resume
+    description: Resume upload and parsing
+  - name: Interview
+    description: Interview session management
+  - name: Proctoring
+    description: Face verification and integrity monitoring
+  - name: Code Execution
+    description: Sandbox code execution
+  - name: Admin
+    description: Administrative endpoints
