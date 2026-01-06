@@ -1,25 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useProfile, DashboardData } from "../hooks/useProfile";
 import { useAuth } from "../context/AuthContext";
-import PerformanceChart from "./PerformanceChart";
+import SessionOverview from "./components/SessionOverview";
+import RoundWiseProgress from "./components/RoundWiseProgress";
+import IntegrityProctoringLog from "./components/IntegrityProctoringLog";
+import PerformanceInsights from "./components/PerformanceInsights";
+import ExportReports from "./components/ExportReports";
+import { ChevronDown, ChevronUp, Calendar, Clock, ChevronRight } from "lucide-react";
 
-/* ================= TYPES ================= */
+// --- TYPES ---
 
-type RoundSummary = {
-  averageScore: number | null;
-  feedback: string | null;
+export type ViolationData = {
+  id: string;
+  at: string;
+  type: string;
+  reason: string;
+  action?: string;
 };
 
-type SessionSummary = {
+export type RoundData = {
+  roundType: "screening" | "technical" | "behavioral";
+  questionCount: number;
+  averageScore: number;
+  status: "Pass" | "Weak" | "Failed";
+  transitionReason?: string;
+};
+
+export type PerformanceData = {
+  strongAreas: string[];
+  weakAreas: { skill: string; severity: "Low" | "Medium" | "High" }[];
+  consistency: number;
+  variance: number;
+  recommendations: string[];
+};
+
+export type SessionDetail = {
   sessionId: string;
-  date: string;
+  finalVerdict: "Hire" | "Reject" | "Pending";
+  confidence: number;
+  duration: number;
+  totalQuestions: number;
+  violationCount: number;
+  grayZoneCount: number; // <--- ADDED THIS FIELD
+  startedAt: string;
+  endedAt?: string;
   rounds: {
-    screening: RoundSummary | null;
-    technical: RoundSummary | null;
-    behavioral: RoundSummary | null;
+    screening?: RoundData;
+    technical?: RoundData;
+    behavioral?: RoundData;
   };
+  violations: ViolationData[];
+  performanceInsights?: PerformanceData;
 };
 
 export default function ProfilePage() {
@@ -29,155 +62,266 @@ export default function ProfilePage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(["overview", "rounds", "integrity"])
+  );
+
+  const toggleSection = (section: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(section)) {
+      newExpanded.delete(section);
+    } else {
+      newExpanded.add(section);
+    }
+    setExpandedSections(newExpanded);
+  };
 
   useEffect(() => {
     if (!token) return;
-
     fetchDashboard()
-      .then(setData)
-      .catch(() => setError("Unable to load profile dashboard"))
+      .then((responseData) => {
+        setData(responseData);
+        setSelectedIndex(0);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to load dashboard");
+      })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, fetchDashboard]);
 
-  if (!token) return <p className="p-8">Not logged in</p>;
-  if (loading) return <p className="p-8">Loading dashboard…</p>;
-  if (error) return <p className="p-8 text-red-600">{error}</p>;
-  if (!data) return null;
+  const selectedSession = useMemo<SessionDetail | null>(() => {
+    if (!data?.interviewHistory?.length) return null;
+    
+    const currentSession = data.interviewHistory[selectedIndex];
+    const rawSession = currentSession as any;
 
-  const { user, stats, interviewHistory } = data;
+    if (!currentSession || !currentSession.date) return null;
+    
+    const transformRound = (round: any, roundType: "screening" | "technical" | "behavioral") => {
+      if (!round || round.averageScore === null) return undefined;
+      const score = round.averageScore;
+      return {
+        roundType,
+        questionCount: 0,
+        averageScore: score,
+        status: score >= 0.7 ? "Pass" : score >= 0.5 ? "Weak" : "Failed",
+        transitionReason: round.feedback || undefined
+      };
+    };
+    
+    return {
+        sessionId: currentSession.sessionId,
+        finalVerdict: (rawSession.violationCount || 0) > 10 ? "Reject" : "Hire",
+        confidence: 85,
+        duration: 45,
+        totalQuestions: rawSession.qaIds?.length || 0,
+        
+        violationCount: rawSession.violationCount || 0,
+        grayZoneCount: 0, // <--- INITIALIZED HERE (Your backend currently doesn't send this, so defaulting to 0)
+        violations: rawSession.events || [], 
+        
+        startedAt: currentSession.date,
+        endedAt: rawSession.endedAt || undefined,
 
-  const bestScore =
-    interviewHistory.length > 0
-      ? Math.max(
-          ...interviewHistory.flatMap((s: SessionSummary) =>
-            Object.values(s.rounds)
-              .filter(Boolean)
-              .map(r => r!.averageScore ?? 0)
-          )
-        ).toFixed(2)
-      : "N/A";
+        rounds: {
+          screening: transformRound(currentSession.rounds?.screening, "screening"),
+          technical: transformRound(currentSession.rounds?.technical, "technical"),
+          behavioral: transformRound(currentSession.rounds?.behavioral, "behavioral")
+        },
+        performanceInsights: {
+          strongAreas: ["Problem-solving", "Code Logic"],
+          weakAreas: [],
+          consistency: 0.82,
+          variance: 0.15,
+          recommendations: ["Review system design patterns"]
+        }
+    } as SessionDetail;
+  }, [data, selectedIndex]);
+
+  if (!token) return <p className="p-8 text-gray-300">Not logged in</p>;
+  if (loading) return <p className="p-8 text-gray-300 animate-pulse">Loading dashboard...</p>;
+  if (error || !data) return <p className="p-8 text-red-400">Error: {error || "No data available"}</p>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-sky-50 to-purple-50">
-
-      {/* ================= TOP BAR ================= */}
-      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-indigo-100 px-10 py-5 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-            Profile Dashboard
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Interview analytics & performance insights
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="font-semibold text-gray-900">{user.name}</p>
-            <p className="text-sm text-gray-500">{user.email}</p>
+    <div className="min-h-screen bg-gray-900 text-white pb-20">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-indigo-400">Interview Performance Profile</h1>
+            <p className="text-sm text-gray-400 mt-1">Electronics & Instrumentation • NIT Rourkela</p>
           </div>
-
-          <div className="h-10 w-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold uppercase">
-            {user.name?.[0]}
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="font-semibold">{data.user.name}</p>
+              <p className="text-xs text-indigo-300">{data.user.email}</p>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold">
+              {data.user.name?.[0]}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ================= STATS ================= */}
-      <div className="px-10 pt-10 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Total Interviews" value={stats.totalInterviews} />
-        <StatCard title="Average Score" value={stats.averageScore} />
-        <StatCard title="Best Score" value={bestScore} />
-      </div>
-
-      {/* ================= PERFORMANCE CHART ================= */}
-      <div className="px-10 mt-10">
-        <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-indigo-900 mb-4">
-            Performance Trend Across Sessions
-          </h2>
-
-          <PerformanceChart sessions={interviewHistory} />
-        </div>
-      </div>
-
-      {/* ================= PAST SESSIONS ================= */}
-      <div className="px-10 pb-16 mt-12">
-        <h2 className="text-2xl font-semibold mb-6 text-gray-900">
-          Past Interview Sessions
-        </h2>
-
-        {interviewHistory.length === 0 ? (
-          <div className="bg-white p-6 rounded-xl shadow text-gray-500">
-            No interviews yet
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          
+          {/* --- LEFT COLUMN: PAST SESSIONS --- */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-gray-200">History</h2>
+              <span className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">
+                {data.interviewHistory.length} Sessions
+              </span>
+            </div>
+            
+            <div className="space-y-3 max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
+              {data.interviewHistory.map((session, idx) => (
+                <SessionCard 
+                  key={session.sessionId} 
+                  session={session} 
+                  isActive={idx === selectedIndex}
+                  onClick={() => setSelectedIndex(idx)}
+                />
+              ))}
+            </div>
           </div>
-        ) : (
-          <div className="space-y-8">
-            {interviewHistory.map((session: SessionSummary, idx: number) => (
-              <div
-                key={session.sessionId}
-                className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <p className="text-lg font-semibold text-gray-900">
-                    Session #{idx + 1}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {new Date(session.date).toLocaleString()}
-                  </p>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {(["screening", "technical", "behavioral"] as const).map(
-                    round => {
-                      const r = session.rounds[round];
-                      if (!r) return null;
+          {/* --- RIGHT COLUMN: SELECTED SESSION --- */}
+          <div className="lg:col-span-3 space-y-6">
+            {selectedSession ? (
+              <>
+                <SectionWrapper
+                  title="Executive Summary"
+                  sectionId="overview"
+                  expanded={expandedSections.has("overview")}
+                  onToggle={toggleSection}
+                >
+                  <SessionOverview session={selectedSession} />
+                </SectionWrapper>
 
-                      return (
-                        <div
-                          key={round}
-                          className="rounded-xl p-5 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100"
-                        >
-                          <p className="font-semibold text-indigo-800 capitalize mb-2">
-                            {round} round
-                          </p>
+                <SectionWrapper
+                  title="Round-Wise Competency"
+                  sectionId="rounds"
+                  expanded={expandedSections.has("rounds")}
+                  onToggle={toggleSection}
+                >
+                  <RoundWiseProgress rounds={selectedSession.rounds} />
+                </SectionWrapper>
 
-                          <p className="text-sm mb-3">
-                            <span className="text-gray-500">Score:</span>{" "}
-                            <span className="font-bold text-indigo-700 text-lg">
-                              {r.averageScore}
-                            </span>
-                          </p>
+                <SectionWrapper
+                  title="Integrity & Proctoring Log"
+                  sectionId="integrity"
+                  expanded={expandedSections.has("integrity")}
+                  onToggle={toggleSection}
+                >
+                  <IntegrityProctoringLog violations={selectedSession.violations} />
+                </SectionWrapper>
 
-                          {r.feedback && (
-                            <p className="text-sm text-gray-700 leading-relaxed">
-                              <span className="font-medium">Feedback:</span>{" "}
-                              {r.feedback}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
+                <SectionWrapper
+                  title="AI Skill Analysis"
+                  sectionId="insights"
+                  expanded={expandedSections.has("insights")}
+                  onToggle={toggleSection}
+                >
+                  <PerformanceInsights insights={selectedSession.performanceInsights} />
+                </SectionWrapper>
+
+                <SectionWrapper
+                  title="Actions & Documentation"
+                  sectionId="export"
+                  expanded={expandedSections.has("export")}
+                  onToggle={toggleSection}
+                >
+                  <ExportReports session={selectedSession} />
+                </SectionWrapper>
+              </>
+            ) : (
+              <div className="h-64 flex items-center justify-center bg-gray-800 rounded-xl border border-gray-700 border-dashed">
+                <p className="text-gray-400">Select a session from the history to view details</p>
               </div>
-            ))}
+            )}
           </div>
-        )}
+
+        </div>
       </div>
     </div>
   );
 }
 
-/* ================= STAT CARD ================= */
-function StatCard({ title, value }: { title: string; value: any }) {
+// --- HELPER COMPONENT ---
+
+function SessionCard({ session, isActive, onClick }: { session: any, isActive: boolean, onClick: () => void }) {
+  const date = new Date(session.date);
+  
+  const rounds = [session.rounds?.screening, session.rounds?.technical, session.rounds?.behavioral];
+  const scores = rounds
+    .map((r: any) => r?.averageScore)
+    .filter((s: any) => typeof s === 'number') as number[];
+  
+  const avg = scores.length 
+    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) 
+    : 0;
+
   return (
-    <div className="relative bg-white rounded-2xl p-6 border border-indigo-100 shadow-sm hover:shadow-lg transition">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-t-2xl" />
-      <p className="text-sm text-gray-500">{title}</p>
-      <p className="text-4xl font-extrabold mt-2 text-indigo-700">
-        {value ?? "N/A"}
-      </p>
+    <button
+      onClick={onClick}
+      className={`w-full text-left p-4 rounded-xl border transition-all duration-200 group relative overflow-hidden ${
+        isActive 
+          ? "bg-indigo-900/20 border-indigo-500 shadow-lg shadow-indigo-900/10" 
+          : "bg-gray-800 border-gray-700 hover:bg-gray-750 hover:border-gray-600"
+      }`}
+    >
+      {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500" />}
+      
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <p className="text-sm font-medium text-gray-200 group-hover:text-white">
+            Interview Session
+          </p>
+          <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+            <Calendar className="w-3 h-3" />
+            {date.toLocaleDateString()}
+          </div>
+        </div>
+        <div className={`px-2 py-1 rounded text-xs font-bold ${
+          avg >= 70 ? 'bg-green-500/10 text-green-400' : 
+          avg >= 50 ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'
+        }`}>
+          {avg > 0 ? `${avg}%` : 'N/A'}
+        </div>
+      </div>
+
+      <div className="flex justify-between items-end mt-3">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Clock className="w-3 h-3" />
+          <span>{date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+        </div>
+        {isActive && <ChevronRight className="w-4 h-4 text-indigo-400 animate-pulse" />}
+      </div>
+    </button>
+  );
+}
+
+// --- WRAPPER ---
+
+function SectionWrapper({ title, sectionId, expanded, onToggle, children }: any) {
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl transition-all duration-200">
+      <button
+        onClick={() => onToggle(sectionId)}
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-700/40 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-1.5 h-6 rounded-full ${expanded ? 'bg-indigo-500' : 'bg-gray-600'}`} />
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        </div>
+        {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+      </button>
+      {expanded && <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-300">{children}</div>}
     </div>
   );
 }

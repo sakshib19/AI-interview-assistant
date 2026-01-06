@@ -11,8 +11,21 @@ import {
   CartesianGrid,
 } from "recharts";
 
+type SessionRound = {
+  averageScore: number | null;
+  feedback: string | null;
+};
+
+type Session = {
+  rounds?: {
+    screening?: SessionRound | null;
+    technical?: SessionRound | null;
+    behavioral?: SessionRound | null;
+  };
+};
+
 type Props = {
-  sessions: any[];
+  sessions: Session[];
 };
 
 export default function PerformanceChart({ sessions }: Props) {
