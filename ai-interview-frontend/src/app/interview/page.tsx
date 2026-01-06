@@ -47,7 +47,9 @@ import {
   Pause,
   Settings,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Clock,     // <--- NEW
+  Database,
     // <--- NEW // Added for loading indicator
 } from "lucide-react";
 
@@ -548,6 +550,92 @@ const StructuredFeedback = ({ diagnosis }: { diagnosis?: any }) => {
     </div>
   );
 };
+const ComplexityFeedback = ({ analysis }: { analysis?: any }) => {
+  if (!analysis || analysis.verdict === "NOT_PROVIDED") return null;
+
+  const isMatch = analysis.verdict === "MATCH";
+  const isPartial = analysis.verdict === "PARTIAL_MATCH";
+  const isMismatch = analysis.verdict === "MISMATCH";
+
+  const borderColor = isMatch
+    ? "border-emerald-200 bg-emerald-50/50"
+    : isPartial
+    ? "border-amber-200 bg-amber-50/50"
+    : "border-rose-200 bg-rose-50/50";
+
+  const textColor = isMatch
+    ? "text-emerald-800"
+    : isPartial
+    ? "text-amber-800"
+    : "text-rose-800";
+
+  return (
+    <div className={`mt-4 mb-4 rounded-xl border-2 ${borderColor} p-4 animate-in fade-in slide-in-from-bottom-2`}>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${textColor}`}>
+          <Target size={14} /> Complexity Analysis
+        </h4>
+        <span
+          className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase border ${
+            isMatch
+              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+              : isPartial
+              ? "bg-amber-100 text-amber-700 border-amber-200"
+              : "bg-rose-100 text-rose-700 border-rose-200"
+          }`}
+        >
+          {analysis.verdict.replace("_", " ")}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Time Complexity */}
+        <div className="bg-white/60 rounded-lg p-3 border border-slate-200/60">
+          <div className="flex items-center gap-2 mb-2 text-slate-500 font-bold text-xs uppercase">
+            <Clock size={12} /> Time Complexity
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <div>
+              <span className="text-[10px] text-slate-400 block">You Claimed</span>
+              <span className="font-mono font-bold text-slate-700">
+                {analysis.claimed_time || "N/A"}
+              </span>
+            </div>
+            <ArrowRight size={14} className="text-slate-300" />
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 block">Actual</span>
+              <span className="font-mono font-bold text-indigo-600">
+                {analysis.actual_time}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Space Complexity */}
+        <div className="bg-white/60 rounded-lg p-3 border border-slate-200/60">
+          <div className="flex items-center gap-2 mb-2 text-slate-500 font-bold text-xs uppercase">
+            <Database size={12} /> Space Complexity
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <div>
+              <span className="text-[10px] text-slate-400 block">You Claimed</span>
+              <span className="font-mono font-bold text-slate-700">
+                {analysis.claimed_space || "N/A"}
+              </span>
+            </div>
+            <ArrowRight size={14} className="text-slate-300" />
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 block">Actual</span>
+              <span className="font-mono font-bold text-indigo-600">
+                {analysis.actual_space}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, renderScoreBadge: any }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   
@@ -619,8 +707,14 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
                 )}
               </div>
 
+              {/* 👇 NEW: ADD COMPLEXITY FEEDBACK HERE */}
+              {h.result.complexity_analysis && (
+                <ComplexityFeedback analysis={h.result.complexity_analysis} />
+              )}
+
               <StructuredFeedback diagnosis={h.result.technical_diagnosis} />
 
+              {/* ... Rest of your component (improvement, rationale, red flags) ... */}
               {(!h.result.technical_diagnosis?.win && !h.result.technical_diagnosis?.gap?.issue && h.result.improvement) && (
                 <div className="bg-slate-50 p-5 rounded-xl border-l-4 border-slate-400">
                   <div className="flex items-start gap-3">
@@ -660,7 +754,6 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
 };
 
 
-
 export default function InterviewPage() {
   const {
     stage,
@@ -688,6 +781,10 @@ const { isListening, startListening, stopListening, transcriptBuffer, error: spe
   const [roadmapTitle, setRoadmapTitle] = useState("");
   const [timeComplexity, setTimeComplexity] = useState("");
 const [spaceComplexity, setSpaceComplexity] = useState("");
+const [roundSummary, setRoundSummary] = useState<any>(null); // Stores data from /feedback/round
+const [loadingRoundFeedback, setLoadingRoundFeedback] = useState(false);
+const [finalReport, setFinalReport] = useState<any>(null); // Stores data from /feedback/final
+const [loadingFinalReport, setLoadingFinalReport] = useState(false);
 const [showConfigModal, setShowConfigModal] = useState(false); // <--- NEW
 const [lastDiagnosis, setLastDiagnosis] = useState<any>(null); // <--- NEW
 const [codeOutput, setCodeOutput] = useState<string | null>(null);
@@ -1006,6 +1103,93 @@ useEffect(() => {
   }, [currentQuestion?.questionId]);
 // --------------------- Replace existing handleRunCode with this ---------------------
 // paste this whole function to replace your existing handleRunCode
+// --- FETCH ROUND FEEDBACK ---
+const fetchRoundFeedback = useCallback(async (finishedRound: string) => {
+  if (!sessionId || !token) return;
+  setLoadingRoundFeedback(true);
+  try {
+    const res = await fetch(`${API}/interview/feedback/round`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ sessionId, round: finishedRound }),
+    });
+    const data = await res.json();
+    if (data.summary) {
+      setRoundSummary(data.summary);
+    }
+  } catch (err) {
+    console.error("Failed to fetch round feedback", err);
+  } finally {
+    setLoadingRoundFeedback(false);
+  }
+}, [sessionId, token, API]);
+
+// --- FETCH FINAL REPORT ---
+const fetchFinalReport = useCallback(async () => {
+  if (!sessionId || !token) return;
+  
+  // 1. Set Loading State
+  setLoadingFinalReport(true);
+
+  const fetchWithRetry = async (retries = 3, delay = 1000) => {
+    try {
+      console.log(`📄 Fetching Final Report... (${retries} attempts left)`);
+      const res = await fetch(`${API}/interview/feedback/final/${sessionId}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (!res.ok) throw new Error("Report not ready");
+      
+      const data = await res.json();
+      
+      // Validation: Ensure we actually have a verdict
+      // If verdict is missing, treat as incomplete and retry
+      if (!data.overall?.verdict && retries > 0) {
+        throw new Error("Incomplete data");
+      }
+
+      console.log("✅ Final Report Loaded:", data);
+      
+      // 2. Update Data
+      setFinalReport(data);
+      
+      // 3. FORCE Loading Off (Success Path)
+      setLoadingFinalReport(false); 
+      
+    } catch (err) {
+      if (retries > 0) {
+        console.warn(`⚠️ Report fetch failed, retrying in ${delay}ms...`);
+        setTimeout(() => fetchWithRetry(retries - 1, delay), delay);
+      } else {
+        console.error("❌ Failed to load final report after retries", err);
+        // 4. FORCE Loading Off (Failure Path) - shows partial data or error
+        setLoadingFinalReport(false); 
+      }
+    }
+  };
+
+  await fetchWithRetry();
+}, [sessionId, token, API]);// Trigger Final Report when stage becomes "done"
+// Trigger Final Report when stage becomes "done"
+useEffect(() => {
+  // Only auto-fetch if we don't have the report and aren't currently loading it
+  if (stage === "done" && !finalReport && !loadingFinalReport) {
+    console.log("🎬 Interview done. Waiting for AI generation to finish writing to DB...");
+    
+    // ⏳ DELAY FIX: Wait 2.5 seconds before fetching.
+    // This prevents getting the "hardcoded" fallback data while the AI is still thinking.
+    const timer = setTimeout(() => {
+        console.log("🚀 Fetching final report now...");
+        fetchFinalReport();
+    }, 2500); 
+
+    return () => clearTimeout(timer);
+  }
+}, [stage, finalReport, loadingFinalReport, fetchFinalReport]);
 const handleRunCode = async () => {
   console.log("🔍 handleRunCode called");
   console.trace();
@@ -1958,35 +2142,72 @@ if (currentQuestion?.expectedAnswerType === "code") {
       if (excalidrawAPI) {
         excalidrawAPI.resetScene();
       }
-
- if (result?.technical_diagnosis) {
-         setLastDiagnosis(result.technical_diagnosis);
+// 1. Handle Diagnosis (Instant Feedback)
+      if (result?.technical_diagnosis) {
+        setLastDiagnosis(result.technical_diagnosis);
       } else {
-         setLastDiagnosis(null);
+        setLastDiagnosis(null);
       }
 
+      // 2. 🚨 CHECK FOR ELIMINATION / ENDED FIRST 🚨
+      // If eliminated, the hook sets stage="done". We must stop here.
+      if (result?.eliminated || result?.ended) {
+        console.log("🛑 Interview Ended via Answer Response");
+        // Force a fetch of the report after a short delay to allow DB save
+        setTimeout(() => fetchFinalReport(), 2000); 
+        return; 
+      }
+
+      // 3. Handle Round Transition
       const newRoundData = result?.round_info || result?.metadata;
-      const incomingRound = newRoundData?.current || newRoundData?.current_round;
+      
+      // ✅ FIX: Normalize strings for comparison to catch "Screening" vs "screening"
+      const prevRound = (currentRound || "").toLowerCase().trim();
+      const nextRoundRaw = (newRoundData?.current || newRoundData?.current_round || "").trim();
+      const nextRound = nextRoundRaw.toLowerCase();
 
-      if (incomingRound && incomingRound !== currentRound && incomingRound !== "complete" && result?.nextQuestion) {
-        setNextRoundName(incomingRound);
+      // 🔍 Debug Log: Check your console to see exactly what is being compared
+      console.log(`🔄 Round Transition Check: '${prevRound}' -> '${nextRound}'`);
+
+      const isRoundChange = 
+          nextRound && 
+          nextRound !== prevRound && 
+          nextRound !== "complete" && 
+          nextRound !== "completed";
+
+      if (isRoundChange) {
+        console.log("🚀 TRANSITION DETECTED: Opening Modal");
+        
+        setNextRoundName(nextRoundRaw); // Store the nice looking name (e.g. "Technical")
+        setRoundSummary(null);
         setShowRoundModal(true);
+        
+        // Fetch feedback for the round we just FINISHED (the currentRound state)
+        fetchRoundFeedback(currentRound); 
+        
+        // Update progress bars in background, but DON'T change currentRound state yet
         if (newRoundData.progress) setRoundProgress(newRoundData.progress);
-        return;
+        
+        // 🛑 RETURN EARLY: This prevents the UI from switching rounds immediately.
+        // The switch happens when the user clicks the button in the modal.
+        return; 
       }
 
+      // 4. Normal Question Update (No Round Change)
       if (newRoundData) {
-        setCurrentRound(incomingRound || currentRound);
+        setCurrentRound(nextRoundRaw || currentRound);
         if (newRoundData.progress) setRoundProgress(newRoundData.progress);
       }
+
     } catch (e) {
       console.error("Submit error:", e);
     }
   };
+
   // Helper for the modal button
   const handleNextRound = () => {
       setShowRoundModal(false);
-      setCurrentRound(nextRoundName); // Update badge to new round
+      setCurrentRound(nextRoundName); // Update badge to new round only when user clicks
   };
   /* -------------------------
       Cleanup effect (unmount) (unchanged)
@@ -2397,34 +2618,91 @@ const RoundTransitionModal = () => {
   if (!showRoundModal) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="max-w-lg w-full bg-white rounded-2xl p-8 shadow-2xl text-center animate-in fade-in zoom-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-300">
+      <div className="max-w-2xl w-full bg-white rounded-2xl p-8 shadow-2xl border border-slate-200 relative overflow-hidden">
         
-        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-100 flex items-center justify-center">
-          <CheckCircle size={40} className="text-indigo-600" />
+        {/* Background decoration */}
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+        <div className="text-center mb-8 relative z-10">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center shadow-inner border-4 border-white ring-2 ring-indigo-100">
+            <CheckCircle size={40} className="text-indigo-600" />
+          </div>
+          <h3 className="text-3xl font-black text-slate-900 mb-2 capitalize">
+            {currentRound} Round Complete
+          </h3>
+          <div className="inline-flex items-center gap-2 bg-slate-100 px-4 py-1 rounded-full">
+            <span className="text-slate-500 font-medium text-sm">Next Stage:</span>
+            <span className="text-indigo-700 font-bold uppercase tracking-wide text-sm">{nextRoundName}</span>
+          </div>
         </div>
 
-        <h3 className="text-2xl font-black text-slate-900 mb-2">
-          {currentRound.toUpperCase()} Round Completed 🎉
-        </h3>
+        {/* Feedback Container */}
+        <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 mb-8 min-h-[160px] relative">
+          {loadingRoundFeedback ? (
+            <div className="flex flex-col items-center justify-center h-32 gap-3">
+              <Loader2 className="animate-spin text-indigo-600" size={32} />
+              <span className="text-sm text-slate-500 font-medium animate-pulse">
+                AI is analyzing your {currentRound} performance...
+              </span>
+            </div>
+          ) : roundSummary ? (
+            <div className="animate-in slide-in-from-bottom-2 duration-500">
+               {/* Score */}
+               <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200">
+                 <h4 className="font-bold text-slate-700">Round Performance</h4>
+                 <div className="flex items-center gap-2">
+                   <span className="text-sm text-slate-500">Score:</span>
+                   <span className={`text-xl font-black ${
+                     (roundSummary.score || 0) > 0.7 ? 'text-emerald-600' : 'text-amber-600'
+                   }`}>
+                     {Math.round((roundSummary.score || 0) * 100)}%
+                   </span>
+                 </div>
+               </div>
+               
+               {/* AI Feedback Text */}
+               <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                 {roundSummary.feedback || "No specific feedback generated."}
+               </p>
 
-        <p className="text-slate-600 mb-6">
-          Great work! Click below to continue to the{" "}
-          <span className="font-bold capitalize">{nextRoundName}</span> round.
-        </p>
+               {/* Key Strengths Tags */}
+               {roundSummary.strengths?.length > 0 && (
+                 <div className="flex flex-wrap gap-2">
+                   {roundSummary.strengths.slice(0, 3).map((s: string, i: number) => (
+                     <span key={i} className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                       ✓ {s}
+                     </span>
+                   ))}
+                 </div>
+               )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 text-slate-400">
+              <AlertCircle size={24} className="mb-2 opacity-50" />
+              <span className="text-sm">Feedback unavailable for this round.</span>
+            </div>
+          )}
+        </div>
 
-        <button
-          onClick={handleNextRound}
-          className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-lg shadow-lg hover:scale-105 transition"
-        >
-          Start {nextRoundName} Round
-          <ArrowRight size={20} />
-        </button>
+        {/* Action Button */}
+        <div className="text-center">
+          <button
+            onClick={() => {
+                // ✅ UPDATE STATE ONLY ON CLICK
+                setShowRoundModal(false);
+                setCurrentRound(nextRoundName); 
+            }}
+            className="group relative inline-flex items-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-xl font-bold text-lg shadow-xl hover:bg-slate-800 hover:scale-[1.02] transition-all active:scale-95"
+          >
+            <span>Start {nextRoundName} Round</span>
+            <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
       </div>
     </div>
   );
 };
-
 
   const handleBeforeUnload = useCallback(
     (event: BeforeUnloadEvent) => {
@@ -4202,260 +4480,294 @@ if (excalidrawAPI) {
         )}
 
         {/* FINAL RESULTS (unchanged) */}
+        {/* FINAL RESULTS - UPDATED */}
         {stage === "done" && (
-          <div className="max-w-4xl mx-auto animate-in fade-in zoom-in duration-500">
+          <div className="max-w-5xl mx-auto animate-in fade-in zoom-in duration-500">
             <div className="p-10 rounded-3xl bg-white border-2 border-slate-200 shadow-2xl">
+              
+              {/* Header */}
               <div className="text-center mb-10">
-                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 text-white mb-5 shadow-lg">
-                  <CheckCircle size={40} />
+                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 text-white mb-6 shadow-xl ring-4 ring-green-100">
+                  <Award size={48} />
                 </div>
                 <h2 className="text-4xl font-black text-slate-900 mb-2">
-                  Interview Complete
+                  Assessment Complete
                 </h2>
-                <p className="text-slate-600 text-lg">
-                  Here's your comprehensive performance analysis
+                <p className="text-slate-500 text-lg font-medium">
+                  {finalReport?.meta?.duration_minutes 
+                    ? `Completed in ${finalReport.meta.duration_minutes} minutes` 
+                    : "Here is your comprehensive performance analysis"}
                 </p>
               </div>
 
-              {performanceMetrics && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                  <div className="text-center p-4 bg-slate-50 rounded-xl border border-slate-200">
-                    <div className="text-3xl font-black text-slate-900">
-                      {performanceMetrics.question_count}
+              {/* 1. LOADING STATE FOR REPORT */}
+ {loadingFinalReport ? (
+  <div className="py-20 text-center border-2 border-dashed border-indigo-100 rounded-2xl bg-indigo-50/30">
+    <Loader2 className="animate-spin text-indigo-600 w-12 h-12 mx-auto mb-4" />
+    <h3 className="text-xl font-bold text-slate-800">Compiling Final Report...</h3>
+    <p className="text-slate-500 mt-2 mb-6">AI is aggregating your round performance and generating detailed insights.</p>
+    
+    {/* Manual Retry Button */}
+    <button 
+      onClick={() => fetchFinalReport()}
+      className="px-6 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+    >
+      Click here if this takes too long
+    </button>
+  </div>
+              ) : (
+                <>
+                  {/* 2. TOP METRICS CARDS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                    {/* Verdict Card */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 rounded-2xl border border-indigo-100 flex flex-col items-center justify-center text-center shadow-sm">
+                      <span className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-4">Final Verdict</span>
+                      <div className="transform scale-110">
+                        {renderVerdictBadge(finalReport?.overall?.verdict || finalDecision?.verdict)}
+                      </div>
+                      {finalReport?.overall?.decision_reason && (
+                        <p className="mt-4 text-sm text-slate-500 italic max-w-sm">
+                          "{finalReport.overall.decision_reason}"
+                        </p>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Questions
+                    
+                    {/* Score Card */}
+                    <div className="bg-white p-8 rounded-2xl border-2 border-slate-100 flex flex-col items-center justify-center text-center shadow-sm relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <Target size={100} />
+                      </div>
+                      <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Overall Technical Score</span>
+                      <div className="text-7xl font-black text-slate-900 mb-2 tracking-tighter">
+                        {Math.round((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 100)}%
+                      </div>
+                      <div className="flex gap-1 mt-2">
+                        {/* Star Rating Visualization using Sparkles as Stars */}
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Sparkles 
+                            key={star} 
+                            size={24} 
+                            className={`${
+                              star <= Math.round(((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 5)) 
+                                ? "text-amber-400 fill-amber-400" 
+                                : "text-slate-200"
+                            }`} 
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center p-4 bg-indigo-50 rounded-xl border border-indigo-200">
-                    <div className="text-3xl font-black text-indigo-600">
-                      {Math.round(performanceMetrics.average_score * 100)}%
+
+                  {/* 3. EXECUTIVE SUMMARY */}
+                  <div className="mb-12 bg-slate-50 p-8 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
+                    <h3 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                      <FileText size={24} className="text-indigo-600" />
+                      Executive Summary
+                    </h3>
+                    <p className="text-slate-700 text-lg leading-relaxed font-medium">
+                      {finalReport?.overall?.feedback_summary || finalDecision?.reason || "Analysis pending..."}
+                    </p>
+                  </div>
+
+                  {/* 4. ROUND-BY-ROUND PERFORMANCE (NEW) */}
+                  {finalReport?.rounds && Object.keys(finalReport.rounds).length > 0 && (
+                    <div className="mb-12 animate-in fade-in slide-in-from-bottom-4">
+                      <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                        <Layout size={24} className="text-slate-400" />
+                        Round Performance
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {Object.entries(finalReport.rounds).map(([name, data]: [string, any]) => (
+                          <div key={name} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
+                            <div className="flex justify-between items-start mb-4">
+                              <span className="capitalize font-bold text-slate-800 text-lg">{name}</span>
+                              <span className={`text-sm font-black px-3 py-1 rounded-full ${
+                                data.score > 0.7 ? 'bg-emerald-100 text-emerald-700' : 
+                                data.score > 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                              }`}>
+                                {Math.round(data.score * 100)}%
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-600 line-clamp-4 leading-relaxed mb-4 min-h-[5rem]">
+                              {data.feedback}
+                            </p>
+                            {data.weaknesses?.length > 0 && (
+                              <div className="pt-4 border-t border-slate-100">
+                                <div className="text-xs font-bold text-rose-600 uppercase mb-1 flex items-center gap-1">
+                                  <TrendingDown size={12} /> Key Weakness
+                                </div>
+                                <div className="text-xs text-slate-700 font-medium truncate">
+                                  {data.weaknesses[0]}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Avg Score
+                  )}
+
+                  {/* 5. DETAILED STRENGTHS & WEAKNESSES */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                    {/* Left: Strengths */}
+                    <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100">
+                      <h4 className="font-bold text-emerald-800 mb-6 flex items-center gap-2 text-lg">
+                        <div className="p-2 bg-emerald-100 rounded-lg">
+                          <TrendingUp size={20} className="text-emerald-600" /> 
+                        </div>
+                        Key Strengths
+                      </h4>
+                      <div className="space-y-3">
+                        {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).map((s: string, i: number) => (
+                          <div key={i} className="flex gap-3 p-4 bg-white rounded-xl border border-emerald-100 shadow-sm">
+                            <CheckCircle size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                            <span className="text-sm text-emerald-900 font-semibold">{s}</span>
+                          </div>
+                        ))}
+                        {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).length === 0 && (
+                          <div className="text-sm text-slate-400 italic px-4">None detected yet.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Weaknesses */}
+                    <div className="bg-rose-50/30 p-6 rounded-2xl border border-rose-100">
+                      <h4 className="font-bold text-rose-800 mb-6 flex items-center gap-2 text-lg">
+                        <div className="p-2 bg-rose-100 rounded-lg">
+                          <AlertCircle size={20} className="text-rose-600" />
+                        </div>
+                        Areas for Growth
+                      </h4>
+                      <div className="space-y-3">
+                        {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).map((w: string, i: number) => (
+                          <div key={i} className="flex gap-3 p-4 bg-white rounded-xl border border-rose-100 shadow-sm">
+                            <Target size={20} className="text-rose-500 shrink-0 mt-0.5" />
+                            <span className="text-sm text-rose-900 font-semibold">{w}</span>
+                          </div>
+                        ))}
+                       {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).length === 0 && (
+  <div className="text-sm text-slate-400 italic px-4">
+    {(finalReport?.overall?.verdict || finalDecision?.verdict) === "reject"
+      ? "Specific weaknesses not listed due to early termination."
+      : "None detected. Great job!"}
+  </div>
+)}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-200">
-                    <div className="text-3xl font-black text-purple-600 capitalize">
-                      {performanceMetrics.trend}
-                    </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Trend
-                    </div>
+                </>
+              )}
+
+              {/* 6. RECOMMENDED ROLE */}
+              {(finalReport?.details?.recommended_role || finalDecision?.recommended_role) && (
+                <div className="mb-10 text-center">
+                  <div className="inline-block bg-slate-900 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
+                    Recommended Role: {finalReport?.details?.recommended_role || finalDecision?.recommended_role}
                   </div>
-                  <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                    <div className="text-3xl font-black text-emerald-600">
-                      {Math.round(performanceMetrics.confidence * 100)}%
-                    </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Confidence
+                </div>
+              )}
+
+{/* 7. ACTION BUTTONS */}
+              <div className="flex flex-col md:flex-row justify-center gap-4 mt-8 pt-8 border-t border-slate-100 flex-wrap">
+                <button
+                  onClick={() => setShowReport(!showReport)}
+                  className="px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition-all shadow-sm hover:shadow-md"
+                >
+                  {showReport ? "Hide Transcript" : "View Full Transcript"}
+                </button>
+
+                <button
+                  onClick={() => speakText(finalReport?.overall?.feedback_summary || finalDecision?.reason)}
+                  className="px-6 py-3 bg-white border-2 border-indigo-100 text-indigo-600 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2"
+                >
+                  <Volume2 size={20} /> Listen to Report
+                </button>
+                
+                <button
+                  onClick={generatePDF}
+                  className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl shadow-lg hover:shadow-emerald-200 hover:-translate-y-1 transition-all font-bold flex items-center justify-center gap-2"
+                >
+                  <FileText size={20} /> Download PDF
+                </button>
+
+                {/* 🔥 NEW: Generate Roadmap Button */}
+                <button
+                  onClick={fetchRoadmap}
+                  disabled={loadingRoadmap || !!roadmap}
+                  className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${
+                    roadmap 
+                      ? "bg-slate-100 text-slate-400 cursor-default" 
+                      : "bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:shadow-blue-200 hover:-translate-y-1"
+                  }`}
+                >
+                  {loadingRoadmap ? (
+                    <Loader2 className="animate-spin" size={20} />
+                  ) : (
+                    <Map size={20} />
+                  )}
+                  {roadmap ? "Roadmap Generated" : "Generate 4-Week Roadmap"}
+                </button>
+
+                <button
+                  onClick={() => setConfirmRestartVisible(true)}
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-indigo-200 hover:-translate-y-1 font-bold transition-all shadow-lg"
+                >
+                  Start New Interview
+                </button>
+              </div>
+
+              {/* 🔥 8. ROADMAP DISPLAY (Added Here) */}
+              {roadmap && (
+                <div className="mt-12 w-full animate-in fade-in slide-in-from-bottom-6 duration-700">
+                   <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
+                </div>
+              )}
+
+              {/* 9. CONFIRM RESTART MODAL */}
+              {confirmRestartVisible && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                  <div className="max-w-md w-full bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 animate-in zoom-in">
+                    <h4 className="font-bold text-xl mb-2 text-slate-900">Start a new interview?</h4>
+                    <p className="text-slate-600 mb-6">
+                      This will clear your current progress and results. Are you sure you want to proceed?
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50"
+                        onClick={() => setConfirmRestartVisible(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-md"
+                        onClick={() => {
+                          localStorage.removeItem("active_interview_session");
+                          window.location.reload();
+                        }}
+                      >
+                        Yes, Start New
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
 
-         {finalDecision ? (
-  <div className="bg-gradient-to-br from-slate-50 to-indigo-50 rounded-2xl p-8 mb-8 border-2 border-slate-200">
-    <div className="text-sm text-slate-600 uppercase tracking-widest font-black mb-4 text-center">
-      Final Verdict
-    </div>
-    <div className="mb-5 transform scale-150 inline-block text-center w-full">
-      {renderVerdictBadge(finalDecision.verdict)}
-    </div>
-             
-    {/* 👇 NEW: Round-by-round breakdown */}
- {finalDecision.performanceMetrics &&
- typeof finalDecision.performanceMetrics === "object" &&
- !("average_score" in finalDecision.performanceMetrics) &&
- !("averageScore" in finalDecision.performanceMetrics) && (
-  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-    {Object.entries(finalDecision.performanceMetrics).map(
-      ([round, stats]: [string, any]) =>
-        typeof stats === "object" && stats !== null ? (
-          <div
-            key={round}
-            className="bg-white p-4 rounded-lg border border-slate-200"
-          >
-            <div className="text-xs uppercase text-slate-500 font-bold mb-2 capitalize">
-              {round} Round
-            </div>
-
-            <div className="text-2xl font-black text-slate-900">
-              {stats.questions ?? 0} Questions
-            </div>
-
-            {typeof stats.average_score === "number" && (
-              <div className="text-sm text-slate-600 mt-1">
-                Avg: {Math.round(stats.average_score * 100)}%
-              </div>
-            )}
-          </div>
-        ) : null
-    )}
-  </div>
-)}
-
-    {finalDecision.confidence && (
-      <div className="text-sm text-slate-500 mt-5 font-medium text-center">
-        Decision Confidence:{" "}
-        <span className="font-bold text-slate-700">
-          {(finalDecision.confidence * 100).toFixed(0)}%
-        </span>
-      </div>
-    )}
-
-    {finalDecision.reason && (
-      <div className="text-slate-800 font-medium italic max-w-2xl mx-auto text-lg leading-relaxed bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-5">
-        "{finalDecision.reason}"
-      </div>
-    )}
-
-    {/* 👇 NEW: Show elimination reason if present */}
-    {finalDecision.critical_weaknesses && finalDecision.critical_weaknesses.length > 0 && (
-      <div className="mt-5 p-4 bg-rose-50 border border-rose-200 rounded-lg">
-        <div className="text-sm font-bold text-rose-800 mb-2">Areas for Improvement:</div>
-        <ul className="text-sm text-rose-700 list-disc list-inside space-y-1">
-          {finalDecision.critical_weaknesses.map((weakness: string, idx: number) => (
-            <li key={idx}>{weakness}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {finalDecision.key_strengths && finalDecision.key_strengths.length > 0 && (
-      <div className="mt-5 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-        <div className="text-sm font-bold text-emerald-800 mb-2">Key Strengths:</div>
-        <ul className="text-sm text-emerald-700 list-disc list-inside space-y-1">
-          {finalDecision.key_strengths.map((strength: string, idx: number) => (
-            <li key={idx}>{strength}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {finalDecision.recommended_role && (
-      <div className="mt-5 text-sm text-indigo-600 font-bold text-center">
-        Recommended Role: {finalDecision.recommended_role}
-      </div>
-    )}
-  </div>
-) : (
-  <div className="text-center p-8 bg-slate-50 rounded-2xl text-slate-500 mb-8 border-2 border-slate-200">
-    Processing final results...
-  </div>
-)}
-{/* 👇 NEW: Roadmap Section Integration */}
-  <div className="mt-12">
-    {loadingRoadmap ? (
-      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border-2 border-slate-100 shadow-xl">
-        <div className="relative">
-          <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Sparkles size={20} className="text-indigo-600" />
-          </div>
-        </div>
-        <h3 className="mt-6 text-xl font-bold text-slate-900">
-          Generating Personalized Roadmap...
-        </h3>
-        <p className="text-slate-500 mt-2 text-center max-w-md">
-          AI is analyzing your mistakes in DSA and System Design to create a custom 4-week study plan.
-        </p>
-      </div>
-    ) : roadmap ? (
-      <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
-    ) : (
-      <div className="text-center mt-8">
-        <button 
-          onClick={fetchRoadmap}
-          className="text-indigo-600 font-bold hover:underline flex items-center justify-center gap-2 mx-auto"
-        >
-          <Zap size={18} /> Generate Study Plan
-        </button>
-      </div>
-    )}
-  </div>
-
-              <div className="flex justify-center gap-4">
-                <button
-                  onClick={() => setShowReport(!showReport)}
-                  className="px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition-all shadow-md hover:shadow-lg"
-                >
-                  {showReport ? "Hide Full Transcript" : "View Full Transcript"}
-                </button>
-                {finalDecision?.reason && (
-  <button
-    onClick={() => speakText(finalDecision.reason)}
-    className="px-6 py-3 bg-white border-2 border-indigo-300 text-indigo-700 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2"
-  >
-    <Volume2 size={18} />
-    Read Feedback Aloud
-  </button>
-)}
-
-<button
-  onClick={generatePDF}
-  className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl hover:shadow-xl font-bold transition-all shadow-md flex items-center gap-2"
->
-  <FileText size={18} />
-  Download Result (PDF)
-</button>
-                <button
-                  onClick={() => setConfirmRestartVisible(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-xl font-bold transition-all shadow-md"
-                >
-                  Start New Interview
-                </button>
-
-              </div>
-            </div>
-
-            {confirmRestartVisible && (
-              <div className="mt-6 max-w-2xl mx-auto p-6 bg-white rounded-xl border border-slate-200 shadow-md">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-lg">
-                      Start a new interview?
-                    </h4>
-                    <p className="text-sm text-slate-600">
-                      This will clear current progress and begin a fresh session.
-                      Are you sure you want to continue?
-                    </p>
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      className="px-4 py-2 rounded border"
-                      onClick={() => setConfirmRestartVisible(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded bg-indigo-600 text-white"
-                      onClick={() => {
-                            localStorage.removeItem("active_interview_session");
-
-                     window.location.reload();
-
-                      }}
-                    >
-                      Yes, start new
-                    </button>
+              {/* 9. FULL TRANSCRIPT (CONDITIONAL) */}
+              {showReport && (
+                <div className="mt-12 pt-10 border-t-2 border-slate-100 space-y-6">
+                  <h3 className="font-black text-2xl text-slate-900 flex items-center gap-3">
+                    <div className="w-1.5 h-8 bg-indigo-600 rounded-full"></div>
+                    Complete Transcript
+                  </h3>
+                  <div className="grid gap-6">
+                    {history.map((h, idx) => (
+                      <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
+                    ))}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-{showReport && (
-  <div className="mt-10 space-y-5">
-    <h3 className="font-black text-2xl text-slate-900 px-2 flex items-center gap-3">
-      <div className="w-1 h-8 bg-indigo-600 rounded-full"></div>
-      Complete Transcript
-    </h3>
-
-    {history.map((h, idx) => (
-      <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
-    ))}
-  </div>
-)}
+            </div>
           </div>
         )}
       </div>
