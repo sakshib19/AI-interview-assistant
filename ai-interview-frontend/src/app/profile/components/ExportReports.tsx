@@ -3,7 +3,7 @@
 import { SessionDetail } from "../page";
 import { Download, FileText, Share2, Calendar } from "lucide-react";
 
-export default function ExportReports({ session }: { session: SessionDetail }) {
+export default function ExportReports({session}: { session: SessionDetail }) {
   const handleDownloadPDF = () => {
     // TODO: Implement PDF generation using jspdf
     alert("PDF download functionality will be implemented");
