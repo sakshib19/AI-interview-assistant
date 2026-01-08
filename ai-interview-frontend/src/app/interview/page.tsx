@@ -2942,367 +2942,337 @@ useEffect(() => {
 }, [currentQuestion?.questionId]);
  // run when question changes
  // --- PDF GENERATION LOGIC ---
- const generatePDF = () => {
-  if (!finalDecision) return;
-  
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  let currentPage = 1;
+// --- IMPROVED PDF GENERATION LOGIC ---
+  const generatePDF = () => {
+    if (!finalDecision && !finalReport) return;
 
-  // ============================================================================
-  // MODERN GRADIENT HEADER WITH BRAND IDENTITY
-  // ============================================================================
-  const drawModernHeader = (pageNum: number) => {
-    // Gradient background simulation (jsPDF doesn't support real gradients, so we layer)
-    doc.setFillColor(79, 70, 229); // Indigo
-    doc.rect(0, 0, pageWidth, 50, "F");
-    
-    doc.setFillColor(99, 102, 241); // Lighter indigo overlay
-    doc.rect(0, 35, pageWidth, 15, "F");
+    // consolidate data source
+    const reportData = finalReport || {};
+    const decisionData = finalDecision || {};
+    const metricsData = performanceMetrics || {};
 
-    // Decorative accent line
-    doc.setFillColor(255, 255, 255);
-    doc.rect(0, 48, pageWidth, 2, "F");
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let currentPage = 1;
 
-    // Title with shadow effect (simulated with offset text)
-    doc.setTextColor(200, 200, 220); // Shadow color
-    doc.setFontSize(26);
-    doc.setFont("helvetica", "bold");
-    doc.text("AI Interview Performance Report", 15, 21);
-    
-    doc.setTextColor(255, 255, 255); // Actual text
-    doc.text("AI Interview Performance Report", 14, 20);
+    // --- HELPER: COLORS (Fixed Tuples) ---
+    // We strictly define these as tuples [r, g, b] to satisfy jspdf-autotable
+    const COLORS = {
+      primary: [79, 70, 229] as [number, number, number],      // Indigo 600
+      primaryLight: [99, 102, 241] as [number, number, number], // Indigo 500
+      secondary: [241, 245, 249] as [number, number, number],   // Slate 100
+      textMain: [30, 41, 59] as [number, number, number],       // Slate 800
+      textLight: [100, 116, 139] as [number, number, number],   // Slate 500
+      success: [16, 185, 129] as [number, number, number],      // Emerald
+      warning: [245, 158, 11] as [number, number, number],      // Amber
+      danger: [239, 68, 68] as [number, number, number],        // Red
+    };
 
-    // Subtitle
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(220, 220, 255);
-    doc.text("Comprehensive Technical Assessment Analysis", 14, 30);
+    // --- HELPER: HEADER ---
+    const drawHeader = (pageNum: number) => {
+      // Background Banner
+      doc.setFillColor(...COLORS.primary);
+      doc.rect(0, 0, pageWidth, 40, "F");
 
-    // Date and verdict badges
-    doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    })}`, 14, 42);
+      // Overlay Design
+      doc.setFillColor(...COLORS.primaryLight);
+      doc.rect(0, 0, pageWidth, 38, "F");
 
-    // Page number (bottom right)
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${pageNum}`, pageWidth - 20, pageHeight - 10, { align: "right" });
-  };
+      // Title
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      doc.text("Technical Interview Report", 14, 18);
 
-  // ============================================================================
-  // VERDICT BADGE WITH COLORED BACKGROUND
-  // ============================================================================
-  const drawVerdictBadge = (verdict: string, x: number, y: number) => {
-    const normalized = (verdict || "pending").toLowerCase();
-    let bgColor: [number, number, number];
-    let textColor: [number, number, number];
-    let label: string;
+      // Subtitle with Date
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(226, 232, 240);
+      doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, 28);
 
-    switch (normalized) {
-      case "strong":
-      case "exceptional":
-        bgColor = [16, 185, 129]; // Emerald
-        textColor = [255, 255, 255];
-        label = "✓ STRONG HIRE";
-        break;
-      case "acceptable":
-        bgColor = [59, 130, 246]; // Blue
-        textColor = [255, 255, 255];
-        label = "✓ ACCEPTABLE";
-        break;
-      default:
-        bgColor = [239, 68, 68]; // Red
-        textColor = [255, 255, 255];
-        label = "✗ NOT RECOMMENDED";
-    }
+      // Footer Page Num
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${pageNum}`, pageWidth - 14, pageHeight - 10, { align: "right" });
+    };
 
-    // Badge background
-    doc.setFillColor(...bgColor);
-    doc.roundedRect(x, y, 60, 10, 2, 2, "F");
+    // --- HELPER: VERDICT BADGE ---
+    const drawVerdictBadge = (verdict: string) => {
+      const v = (verdict || "pending").toLowerCase();
+      let bg = COLORS.secondary;
+      let textCol = COLORS.textMain;
+      let label = "PENDING";
 
-    // Badge text
-    doc.setTextColor(...textColor);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(label, x + 30, y + 6.5, { align: "center" });
-  };
-
-  // ============================================================================
-  // PAGE 1: EXECUTIVE SUMMARY
-  // ============================================================================
-  drawModernHeader(currentPage);
-  
-  let y = 65;
-
-  // Verdict Badge (Top Right)
-  drawVerdictBadge(finalDecision.verdict || "pending", pageWidth - 75, 55);
-
-  // Performance Metrics Cards
-  doc.setFillColor(249, 250, 251); // Very light gray background
-  doc.roundedRect(10, y, pageWidth - 20, 45, 3, 3, "F");
-
-  doc.setDrawColor(226, 232, 240); // Border
-  doc.setLineWidth(0.5);
-  doc.roundedRect(10, y, pageWidth - 20, 45, 3, 3, "S");
-
-  // Section title
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 41, 59); // Slate-800
-  doc.text("📊 Performance Overview", 15, y + 8);
-
-  y += 15;
-
-  const avgScore = (performanceMetrics?.average_score ?? 0) * 100;
-  const confidence = (finalDecision.confidence ?? 0) * 100;
-
-  // Metric cards layout
-  type Metric = {
-  label: string;
-  value: string;
-  color: [number, number, number]; // ✅ RGB tuple
-};
-
-const metrics: Metric[] = [
-  { label: "Overall Score", value: `${avgScore.toFixed(0)}%`, color: [99, 102, 241] },
-  { label: "Confidence", value: `${confidence.toFixed(0)}%`, color: [139, 92, 246] },
-  { label: "Questions", value: `${history.length}`, color: [236, 72, 153] },
-];
-
-
-  const cardWidth = (pageWidth - 40) / 3;
-  metrics.forEach((metric, idx) => {
-    const cardX = 15 + idx * (cardWidth + 5);
-    
-    // Metric value (large)
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...metric.color);
-    doc.text(metric.value, cardX + cardWidth / 2, y + 10, { align: "center" });
-
-    // Metric label (small)
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139); // Slate-500
-    doc.text(metric.label, cardX + cardWidth / 2, y + 17, { align: "center" });
-  });
-
-  y += 35;
-
-  // ============================================================================
-  // KEY INSIGHTS SECTION
-  // ============================================================================
-  doc.setFillColor(254, 252, 232); // Amber-50
-  doc.roundedRect(10, y, pageWidth - 20, 8, 2, 2, "F");
-  
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(146, 64, 14); // Amber-800
-  doc.text("💡 Key Insights", 15, y + 5.5);
-
-  y += 15;
-
-  if (finalDecision.reason) {
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "italic");
-    doc.setTextColor(71, 85, 105); // Slate-600
-    const reasonLines = doc.splitTextToSize(finalDecision.reason, pageWidth - 30);
-    doc.text(reasonLines, 15, y);
-    y += reasonLines.length * 5 + 10;
-  }
-
-  // ============================================================================
-  // STRENGTHS & WEAKNESSES - SIDE BY SIDE
-  // ============================================================================
-  const columnWidth = (pageWidth - 30) / 2;
-  const startY = y;
-
-  // Left Column: Strengths
-  if (finalDecision.key_strengths?.length > 0) {
-    doc.setFillColor(236, 253, 245); // Emerald-50
-    doc.roundedRect(10, startY, columnWidth, 8, 2, 2, "F");
-    
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(5, 150, 105); // Emerald-600
-    doc.text("✓ Key Strengths", 15, startY + 5.5);
-
-    let strengthY = startY + 13;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-
-    finalDecision.key_strengths.forEach((strength: string) => {
-      const lines = doc.splitTextToSize(`• ${strength}`, columnWidth - 10);
-      doc.text(lines, 15, strengthY);
-      strengthY += lines.length * 4.5;
-    });
-
-    y = Math.max(y, strengthY);
-  }
-
-  // Right Column: Weaknesses
-  if (finalDecision.critical_weaknesses?.length > 0) {
-    doc.setFillColor(254, 242, 242); // Rose-50
-    doc.roundedRect(15 + columnWidth, startY, columnWidth, 8, 2, 2, "F");
-    
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(225, 29, 72); // Rose-600
-    doc.text("✗ Areas for Growth", 20 + columnWidth, startY + 5.5);
-
-    let weaknessY = startY + 13;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-
-    finalDecision.critical_weaknesses.forEach((weakness: string) => {
-      const lines = doc.splitTextToSize(`• ${weakness}`, columnWidth - 10);
-      doc.text(lines, 20 + columnWidth, weaknessY);
-      weaknessY += lines.length * 4.5;
-    });
-
-    y = Math.max(y, weaknessY);
-  }
-
-  y += 15;
-
-  // ============================================================================
-  // PAGE 2: DETAILED TRANSCRIPT
-  // ============================================================================
-  doc.addPage();
-  currentPage++;
-  drawModernHeader(currentPage);
-
-  y = 65;
-
-  // Section header
-  doc.setFillColor(241, 245, 249); // Slate-100
-  doc.roundedRect(10, y, pageWidth - 20, 10, 2, 2, "F");
-  
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 41, 59);
-  doc.text("📝 Question-by-Question Analysis", 15, y + 6.5);
-
-  y += 17;
-
-  // Enhanced table data with color coding
-  const tableData = history.map((h, i) => {
-    const qText = h.q?.questionText || "Question text unavailable";
-    const verdict = h.result?.verdict?.toUpperCase() || "N/A";
-    const scoreVal = (h.result?.overall_score ?? 0) * 100;
-    const feedback = h.result?.improvement?.substring(0, 120) || 
-                    h.result?.rationale?.substring(0, 120) || 
-                    "No feedback available";
-
-    return [
-      `Q${i + 1}`,
-      qText.substring(0, 90) + (qText.length > 90 ? "..." : ""),
-      verdict,
-      `${Math.round(scoreVal)}%`,
-      feedback + (feedback.length >= 120 ? "..." : "")
-    ];
-  });
-
-  autoTable(doc, {
-    startY: y,
-    head: [['#', 'Question', 'Result', 'Score', 'Feedback']],
-    body: tableData,
-    theme: 'grid',
-    headStyles: { 
-      fillColor: [79, 70, 229], // Indigo
-      textColor: [255, 255, 255],
-      fontSize: 10,
-      fontStyle: 'bold',
-      halign: 'center',
-    },
-    columnStyles: {
-      0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
-      1: { cellWidth: 70 },
-      2: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
-      3: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
-      4: { cellWidth: 'auto' }
-    },
-    styles: { 
-      fontSize: 8,
-      cellPadding: 3,
-      lineColor: [226, 232, 240],
-      lineWidth: 0.1,
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252], // Slate-50
-    },
-    didParseCell: (data) => {
-      // Color code verdict column
-      if (data.column.index === 2 && data.section === 'body') {
-        const verdict = data.cell.raw as string;
-        if (verdict.includes('STRONG') || verdict.includes('EXCEPTIONAL')) {
-          data.cell.styles.textColor = [22, 163, 74]; // Green
-        } else if (verdict.includes('ACCEPTABLE')) {
-          data.cell.styles.textColor = [59, 130, 246]; // Blue
-        } else if (verdict.includes('WEAK') || verdict.includes('FAIL')) {
-          data.cell.styles.textColor = [220, 38, 38]; // Red
-        }
+      if (v.includes("strong") || v.includes("hire")) {
+        bg = COLORS.success;
+        textCol = [255, 255, 255] as [number, number, number];
+        label = "STRONG HIRE";
+      } else if (v.includes("acceptable")) {
+        bg = [59, 130, 246] as [number, number, number]; // Blue
+        textCol = [255, 255, 255] as [number, number, number];
+        label = "ACCEPTABLE";
+      } else if (v.includes("weak") || v.includes("reject")) {
+        bg = COLORS.danger;
+        textCol = [255, 255, 255] as [number, number, number];
+        label = "NOT RECOMMENDED";
       }
+
+      const badgeWidth = 50;
+      const xPos = pageWidth - badgeWidth - 14;
       
-      // Color code score column
-      if (data.column.index === 3 && data.section === 'body') {
-        const scoreText = data.cell.raw as string;
-        const score = parseInt(scoreText);
-        if (score >= 75) {
-          data.cell.styles.textColor = [22, 163, 74]; // Green
-        } else if (score >= 50) {
-          data.cell.styles.textColor = [234, 179, 8]; // Yellow
-        } else {
-          data.cell.styles.textColor = [220, 38, 38]; // Red
+      doc.setFillColor(...bg);
+      doc.roundedRect(xPos, 10, badgeWidth, 10, 2, 2, "F");
+      
+      doc.setTextColor(...textCol);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text(label, xPos + (badgeWidth / 2), 16.5, { align: "center" });
+    };
+
+    // ================= START PAGE 1 =================
+    drawHeader(currentPage);
+    drawVerdictBadge(reportData.overall?.verdict || decisionData.verdict);
+
+    let y = 55;
+
+    // --- SECTION 1: METRICS ---
+    const score = Math.round((reportData.overall?.score || metricsData.average_score || 0) * 100);
+    const duration = reportData.meta?.duration_minutes || "N/A";
+    const qCount = history.length;
+
+    // Draw Metric Container
+    doc.setDrawColor(200, 200, 200);
+    doc.setFillColor(252, 252, 252);
+    doc.roundedRect(14, y, pageWidth - 28, 30, 3, 3, "FD");
+
+    // Metrics Text
+    const drawMetric = (label: string, value: string, x: number) => {
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...COLORS.primary);
+      doc.text(value, x, y + 12, { align: "center" });
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...COLORS.textLight);
+      doc.text(label, x, y + 22, { align: "center" });
+    };
+
+    const sectionW = (pageWidth - 28) / 3;
+    drawMetric("Overall Score", `${score}%`, 14 + (sectionW / 2));
+    drawMetric("Questions Answered", `${qCount}`, 14 + sectionW + (sectionW / 2));
+    drawMetric("Duration (mins)", `${duration}`, 14 + (sectionW * 2) + (sectionW / 2));
+
+    y += 45;
+
+    // --- SECTION 2: EXECUTIVE SUMMARY ---
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...COLORS.textMain);
+    doc.text("Executive Summary", 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(60, 60, 60);
+const summaryText = reportData.overall?.feedback_summary || decisionData.feedback_summary || decisionData.reason || "No summary available.";    const splitSummary = doc.splitTextToSize(summaryText, pageWidth - 28);
+    doc.text(splitSummary, 14, y);
+    y += (splitSummary.length * 5) + 15;
+
+    // --- SECTION 3: SWOT ANALYSIS ---
+    const colWidth = (pageWidth - 34) / 2;
+    const startY = y;
+
+    // Strengths
+    doc.setFillColor(236, 253, 245); // Emerald 50
+    doc.roundedRect(14, y, colWidth, 8, 1, 1, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(6, 95, 70); // Emerald 800
+    doc.text("Key Strengths", 18, y + 5.5);
+    
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    const strengths = reportData.details?.key_strengths || decisionData.key_strengths || [];
+    strengths.slice(0, 5).forEach((s: string) => {
+      const lines = doc.splitTextToSize(`• ${s}`, colWidth - 8);
+      doc.text(lines, 18, y);
+      y += lines.length * 5;
+    });
+
+    // Weaknesses (reset Y)
+    let rightY = startY;
+    doc.setFillColor(254, 242, 242); // Rose 50
+    doc.roundedRect(14 + colWidth + 6, rightY, colWidth, 8, 1, 1, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(153, 27, 27); // Rose 800
+    doc.text("Areas for Improvement", 18 + colWidth + 6, rightY + 5.5);
+
+    rightY += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    const weaks = reportData.details?.areas_for_improvement || decisionData.critical_weaknesses || [];
+    weaks.slice(0, 5).forEach((w: string) => {
+      const lines = doc.splitTextToSize(`• ${w}`, colWidth - 8);
+      doc.text(lines, 18 + colWidth + 6, rightY);
+      rightY += lines.length * 5;
+    });
+
+    y = Math.max(y, rightY) + 20;
+
+    // --- SECTION 4: ROADMAP (IF AVAILABLE) ---
+    // If we have a roadmap, add a dedicated page
+    if (roadmap && roadmap.weekly_plan) {
+      doc.addPage();
+      currentPage++;
+      drawHeader(currentPage);
+      
+      let rY = 55;
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...COLORS.textMain);
+      doc.text(`Recommended Learning Path: ${roadmapTitle || "Personalized Plan"}`, 14, rY);
+      rY += 15;
+
+      const schedule = roadmap.weekly_plan || [];
+      schedule.forEach((week: any, idx: number) => {
+        // Prevent page overflow
+        if (rY > pageHeight - 40) {
+          doc.addPage();
+          currentPage++;
+          drawHeader(currentPage);
+          rY = 55;
+        }
+
+        // Week Header
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(14, rY, pageWidth - 28, 12, 2, 2, "F");
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COLORS.primary);
+        doc.text(`Week ${week.week}: ${week.theme}`, 18, rY + 8);
+        rY += 20;
+
+        // Goals
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COLORS.textMain);
+        doc.text("Primary Goals:", 18, rY);
+        rY += 6;
+        
+        doc.setFont("helvetica", "normal");
+        (week.goals || []).forEach((goal: string) => {
+           doc.text(`• ${goal}`, 22, rY);
+           rY += 5;
+        });
+        rY += 5; // Spacer
+      });
+    }
+
+    // --- SECTION 5: DETAILED TRANSCRIPT ---
+    doc.addPage();
+    currentPage++;
+    drawHeader(currentPage);
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...COLORS.textMain);
+    doc.text("Detailed Question Analysis", 14, 55);
+
+    const tableRows = history.map((h, i) => {
+      const qText = h.q?.questionText || "Question text missing";
+      const scoreVal = Math.round((h.result?.overall_score || 0) * 100);
+      const verdict = (h.result?.verdict || "N/A").toUpperCase();
+      
+      // Construct detailed feedback string
+      let feedbackStr = h.result?.improvement || h.result?.rationale || "";
+      
+      // FIX 2: Cast result to 'any' to access new properties safely
+      const resultAny = h.result as any; 
+
+      // Append Diagnosis if exists
+      const diag = resultAny?.technical_diagnosis;
+      if (diag) {
+        if (diag.gap?.issue) feedbackStr += `\n\nGAP: ${diag.gap.issue}`;
+        if (diag.fix?.action) feedbackStr += `\nFIX: ${diag.fix.action}`;
+      }
+
+      // Append Complexity Analysis if exists (for code questions)
+      // FIX 2 (continued): accessing 'complexity_analysis' safely
+      const comp = resultAny?.complexity_analysis;
+      let complexityStr = "";
+      if (comp) {
+        complexityStr = `Time: ${comp.actual_time || "N/A"}\nSpace: ${comp.actual_space || "N/A"}`;
+      }
+
+      return [
+        `Q${i + 1}`,
+        qText,
+        complexityStr, // New Column
+        `${scoreVal}%`,
+        feedbackStr
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 65,
+      head: [['#', 'Question', 'Complexity', 'Score', 'Analysis & Feedback']],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: COLORS.primary, // FIX 1: This is now correctly typed as [number, number, number]
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 9
+      },
+      columnStyles: {
+        0: { cellWidth: 10, fontStyle: 'bold' },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 25, fontSize: 8 }, // Complexity
+        3: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 'auto' } // Feedback gets remaining space
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        overflow: 'linebreak',
+        lineColor: [226, 232, 240]
+      },
+      didParseCell: (data) => {
+        // Color code Score
+        if (data.section === 'body' && data.column.index === 3) {
+          const val = parseInt(data.cell.raw as string);
+          if (val >= 70) data.cell.styles.textColor = COLORS.success;
+          else if (val >= 40) data.cell.styles.textColor = COLORS.warning;
+          else data.cell.styles.textColor = COLORS.danger;
+        }
+      },
+      didDrawPage: (data) => {
+        // Redraw header if autoTable creates new pages
+        if (data.pageNumber > currentPage) {
+            currentPage = data.pageNumber;
+            drawHeader(currentPage);
         }
       }
-    },
-    didDrawPage: (data) => {
-      // Redraw header on new pages
-      if (data.pageNumber > currentPage) {
-        currentPage = data.pageNumber;
-        drawModernHeader(currentPage);
-      }
+    });
+
+    // --- FOOTER NOTE ---
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    if (finalY < pageHeight - 20) {
+        doc.setFontSize(8);
+        doc.setTextColor(...COLORS.textLight);
+        doc.setFont("helvetica", "italic");
+        doc.text("Confidential Assessment - Powered by AI Interviewer", 14, finalY);
     }
-  });
 
-  // ============================================================================
-  // FOOTER WITH BRANDING
-  // ============================================================================
-  const finalY = (doc as any).lastAutoTable.finalY || y;
-  
-  if (finalY < pageHeight - 40) {
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.5);
-    doc.line(10, pageHeight - 30, pageWidth - 10, pageHeight - 30);
-
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.setFont("helvetica", "italic");
-    doc.text(
-      "Generated by AI Interview System • Confidential Document",
-      pageWidth / 2,
-      pageHeight - 20,
-      { align: "center" }
-    );
-  }
-
-  // ============================================================================
-  // SAVE WITH TIMESTAMP
-  // ============================================================================
-  const timestamp = new Date().toISOString().split('T')[0];
-  const filename = `Interview_Report_${timestamp}.pdf`;
-  doc.save(filename);
-};
-  const handleGetHint = async () => {
+    doc.save(`Interview_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+    const handleGetHint = async () => {
      if (hint) return;
      if (!confirm("Taking a hint will reduce your maximum score for this question by 15%. Continue?")) return;
      
@@ -4559,13 +4529,14 @@ if (excalidrawAPI) {
                   </div>
 
                   {/* 3. EXECUTIVE SUMMARY */}
-                  <div className="mb-12 bg-slate-50 p-8 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
+               <div className="mb-12 bg-slate-50 p-8 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
                     <h3 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                       <FileText size={24} className="text-indigo-600" />
                       Executive Summary
                     </h3>
                     <p className="text-slate-700 text-lg leading-relaxed font-medium">
-                      {finalReport?.overall?.feedback_summary || finalDecision?.reason || "Analysis pending..."}
+                      {/* 👇 UPDATED LINE: Check finalDecision.feedback_summary before reason */}
+                      {finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason || "Analysis pending..."}
                     </p>
                   </div>
 
@@ -4677,7 +4648,7 @@ if (excalidrawAPI) {
                 </button>
 
                 <button
-                  onClick={() => speakText(finalReport?.overall?.feedback_summary || finalDecision?.reason)}
+onClick={() => speakText(finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason)}
                   className="px-6 py-3 bg-white border-2 border-indigo-100 text-indigo-600 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2"
                 >
                   <Volume2 size={20} /> Listen to Report

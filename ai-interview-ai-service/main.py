@@ -1017,7 +1017,7 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             "elimination": True,
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": ""
+            "feedback_summary": None # Allow AI to generate
         }
 
     # --------------------------------------------------
@@ -1034,7 +1034,7 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             "elimination": True,
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": ""
+            "feedback_summary": None # Allow AI to generate
         }
 
     # --------------------------------------------------
@@ -1055,7 +1055,7 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             "elimination": False,
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": ""
+            "feedback_summary": None # Allow AI to generate
         }
 
     # --------------------------------------------------
@@ -1075,8 +1075,8 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
                 "trigger": "chronic_underperformance",
                 "elimination": True,
                 "key_strengths": [],
-            "critical_weaknesses": [],
-            "feedback_summary": ""
+                "critical_weaknesses": [],
+                "feedback_summary": None # Allow AI to generate
             }
 
     # --------------------------------------------------
@@ -1100,23 +1100,19 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
                 ),
                 "recommended_role": "Intern" if verdict == "hire" else None,
                 "trigger": "gray_zone_timeout",
-                "elimination": verdict == "reject"
+                "elimination": verdict == "reject",
+                "feedback_summary": None # Allow AI to generate
             }
 
     # --------------------------------------------------
     # RULE 6: Hard Safety Limit (Neutral Completion)
     # --------------------------------------------------
-    # FIX: Don't treat reaching the limit as a "failure".
     if qn >= rules.get("max_questions", 10):
         final_average = avg
         
-        # Lower threshold to standard pass (0.55)
-        passed = final_average >= 0.55
         HIRE_THRESHOLD = 0.60   # > 60% = Hire
         REJECT_THRESHOLD = 0.45 # < 45% = Reject
         
-        # Use 'maybe' instead of 'reject' for borderline cases at time limit
-# Logic: Python decides the verdict based on math
         if final_average >= HIRE_THRESHOLD:
             verdict = "hire"
             summary = f"Completed with strong performance. Average: {final_average:.0%}"
@@ -1127,20 +1123,20 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             verdict = "maybe"
             summary = f"Borderline performance. Average: {final_average:.0%}"
         
+        # 🔥 CRITICAL FIX: feedback_summary set to None implies "AI MUST GENERATE THIS"
         return {
             "ended": True,
-            "elimination": False, # Keep False so it shows "Completed" screen, not "Eliminated"
-            "verdict": verdict,   # <--- Python sends the actual decision here
+            "elimination": False, 
+            "verdict": verdict,   
             "confidence": 0.90, 
-            "reason": summary,
+            "reason": summary, # Keep internal reason for logs
             "recommended_role": "SDE-1" if verdict == "hire" else None,
             "trigger": "max_questions",
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": summary
+            "feedback_summary": None # <--- CHANGED from 'summary' to None
         }
-    return None  # Continue interview
-# ==========================================
+    return None  # Continue interview# ==========================================
 # QUESTION GENERATION
 # ==========================================
 
@@ -2392,58 +2388,111 @@ OUTPUT FORMAT:
 # ==========================================
 
 def build_decision_prompt(context: dict) -> str:
-    """Generate comprehensive decision prompt with performance analytics"""
+    """
+    Generate comprehensive decision prompt with specific technical evidence.
+    Decision authority may be enforced externally; the model must not override it.
+    """
     resume = context.get("resume", "")
     history = context.get("question_history", [])
+    forced_verdict = context.get("final_verdict")  # OPTIONAL but recommended
     
     metrics = calculate_performance_metrics(history)
-    
-    # Build question history summary
-    history_text = ""
-    for i, h in enumerate(history[-6:], 1):
-        q = h.get("question", "")[:150]
-        a = h.get("answer", "")[:200]
-        score = h.get("score")
-        verdict = h.get("verdict", "N/A")
-        
-        history_text += f"""
-Question {i}: {q}
-Answer: {a}
-Score: {score} ({verdict})
----"""
-    
+
+    # 1. Build detailed evidence log from Technical Diagnosis
+    evidence_log = ""
+    for i, h in enumerate(history[-8:], 1):  # Last 8 questions only
+        q_type = h.get("type", "conceptual")
+        score = h.get("score", 0)
+
+        result = h.get("result", {})
+        diag = result.get("technical_diagnosis") or h.get("technical_diagnosis") or {}
+
+        strength = diag.get("win", "N/A")
+
+        gap_obj = diag.get("gap") or {}
+        weakness = gap_obj.get("issue", "N/A") if isinstance(gap_obj, dict) else "N/A"
+
+        evidence_log += f"""
+Q{i} [{q_type.upper()}]: Score {score:.2f}
+- Verified Strength: "{strength}"
+- Detected Gap: "{weakness}"
+"""
+
     schema = '''{
   "ended": boolean,
   "verdict": "hire|reject|maybe",
   "confidence": 0.0-1.0,
-  "reason": "string (Internal hiring justification)",
-  "feedback_summary": "string (A polite, constructive paragraph addressed TO THE CANDIDATE summarizing their performance)",
+  "reason": "Internal justification for the hiring manager",
+  "feedback_summary": "Candidate-facing summary grounded strictly in evidence",
   "recommended_role": "string|null",
-  "key_strengths": ["list"],
-  "critical_weaknesses": ["list"]
+  "key_strengths": ["specific, recurring technical strengths"],
+  "critical_weaknesses": ["specific, recurring technical gaps"]
 }'''
 
-    prompt = f"""You are a Senior Hiring Manager.
-    
-    METRICS:
-    Questions: {metrics['question_count']}
-    Avg Score: {metrics['average_score']:.2f}
-    Confidence: {metrics['confidence']:.2f}
-    
-    INTERVIEW HISTORY:
-    {history_text}
-    
-    DECISION LOGIC:
-    1. **CONTINUE (ended: false)**: If unsure (Confidence < {TERMINATION_RULES['min_confidence_to_end']}).
-    2. **HIRE (ended: true)**: Strong signals across multiple topics.
-    3. **REJECT (ended: true)**: Failed basic questions or bluffing.
-    
-    INSTRUCTIONS:
-    - `reason`: Be blunt and specific for the hiring team (e.g., "Failed basic DSA").
-    - `feedback_summary`: Be professional and helpful for the candidate (e.g., "You showed strong potential in X, but we recommend focusing on Y").
-    
-    Output JSON: {schema}
-    """
+    prompt = f"""
+ROLE: You are a senior interviewer writing professional hiring feedback.
+
+TASK:
+Generate a final hiring decision summary strictly based on the verified evidence below.
+
+IMPORTANT CONSTRAINTS:
+- The hiring decision may already be determined by system rules.
+- If a FINAL_VERDICT is provided, you MUST use it and MUST NOT override it.
+- Do NOT invent strengths, weaknesses, or examples.
+- Do NOT soften or exaggerate outcomes.
+
+FINAL_VERDICT (if provided): {forced_verdict or "Not specified"}
+
+METRICS:
+- Questions Asked: {metrics['question_count']}
+- Average Score: {metrics['average_score']:.2f}
+- Performance Trend: {metrics['trend']}
+
+INTERVIEW EVIDENCE LOG:
+{evidence_log}
+
+--------------------------------------------------
+INSTRUCTIONS FOR 'feedback_summary':
+--------------------------------------------------
+1. NO GENERIC FILLER.
+   ❌ "You did well"
+   ❌ "You have potential"
+
+2. CITE VERIFIED EVIDENCE ONLY.
+   Reference concrete skills, patterns, or gaps found in the evidence log.
+
+3. BALANCED, PROFESSIONAL TONE.
+   Clear, objective, and constructive. Candidate-facing.
+
+4. LENGTH: 3-4 sentences.
+
+If evidence is limited, write a concise, factual summary without speculation.
+
+--------------------------------------------------
+INSTRUCTIONS FOR 'key_strengths' / 'critical_weaknesses':
+--------------------------------------------------
+- Extract the top 2-3 recurring themes.
+- Be technical and specific.
+  ✅ "Concurrency control", "Edge-case handling"
+  ❌ "Hard working", "Good attitude"
+
+--------------------------------------------------
+DECISION RULES:
+--------------------------------------------------
+1. CONTINUE (ended: false):
+   Confidence < {TERMINATION_RULES['min_confidence_to_end']}
+
+2. HIRE (ended: true):
+   Strong, consistent signals across multiple topics.
+
+3. REJECT (ended: true):
+   Repeated failures in fundamentals, guessing, or bluffing.
+
+--------------------------------------------------
+Output JSON ONLY:
+{schema}
+"""
+
     return prompt.strip()
 def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, Any]:
     """
@@ -3561,7 +3610,7 @@ def generate_question(req: GenerateQuestionRequest):
             }
             
             # Use low temp for consistent analysis
-            ai_decision_resp = call_decision(decision_context, temperature=0.1)
+            ai_decision_resp = call_decision(decision_context, temperature=0.3)
             ai_data = ai_decision_resp.get("parsed") or {}
 
             # 2. Merge AI insights into the Hard Rule decision
@@ -3576,9 +3625,8 @@ def generate_question(req: GenerateQuestionRequest):
                 rule_termination["critical_weaknesses"] = ai_data.get("critical_weaknesses", [])
             
             # Use AI feedback summary if available, otherwise fallback to rule reason
-            ai_summary = ai_data.get("feedback_summary", "")
-            if ai_summary and len(ai_summary) > 20:
-                 rule_termination["feedback_summary"] = ai_summary
+            if ai_data.get("feedback_summary"):
+                rule_termination["feedback_summary"] = ai_data["feedback_summary"]
             
             # If the rule didn't specify a role, use the AI's suggestion
             if not rule_termination.get("recommended_role"):
@@ -3727,7 +3775,8 @@ def generate_question(req: GenerateQuestionRequest):
         else:
             # Default to conceptual if specific type missing
             parsed = FALLBACK_QUESTIONS["conceptual"].copy()
-        parsed["type"] = "conceptual"
+            parsed["type"] = "conceptual"
+        
         parsed["_is_fallback"] = True
         chosen_raw = "FALLBACK_TRIGGERED"
 

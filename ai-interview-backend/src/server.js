@@ -1067,7 +1067,7 @@ const newQa = await createQARecordDB(
             eliminated = true;
             eliminationReason = genResp.reason;
             ended = true;
-
+const pyDecision = genResp.final_decision || {};
             const decisionDoc = await Decision.create({
               decisionId: uuidv4(),
               sessionId,
@@ -1075,11 +1075,11 @@ const newQa = await createQARecordDB(
               verdict: "reject",
               confidence: 0.95,
               reason: eliminationReason,
-              feedback_summary: "The interview was concluded early based on technical requirements.",
-              recommended_role: null,
-              key_strengths: [],
-              critical_weaknesses: [eliminationReason],
-              rawModelOutput: { eliminated: true, reason: eliminationReason },
+            feedback_summary: pyDecision.feedback_summary || "The interview was concluded early based on technical requirements.",
+              recommended_role: pyDecision.recommended_role || null,
+key_strengths: pyDecision.key_strengths || [],
+              critical_weaknesses: pyDecision.critical_weaknesses || [eliminationReason],
+              rawModelOutput: { eliminated: true, reason: eliminationReason, py_decision: pyDecision },
               performanceMetrics: genResp.round_history || {},
               decidedAt: new Date()
             });
@@ -1554,8 +1554,7 @@ app.post("/interview/end", requireAuth, async (req, res) => {
         };
 
         const aiDecisionResp = await callAiFinalizeDecision(decisionPayload);
-        const aiData = aiDecisionResp.result?.parsed || {};
-
+const aiData = aiDecisionResp.result?.parsed || aiDecisionResp.parsed || {};
         decisionDoc = await Decision.create({
           decisionId: uuidv4(),
           sessionId,
