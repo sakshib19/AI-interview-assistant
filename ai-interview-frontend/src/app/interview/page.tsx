@@ -47,7 +47,9 @@ import {
   Pause,
   Settings,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Clock,     // <--- NEW
+  Database,
     // <--- NEW // Added for loading indicator
 } from "lucide-react";
 
@@ -548,6 +550,92 @@ const StructuredFeedback = ({ diagnosis }: { diagnosis?: any }) => {
     </div>
   );
 };
+const ComplexityFeedback = ({ analysis }: { analysis?: any }) => {
+  if (!analysis || analysis.verdict === "NOT_PROVIDED") return null;
+
+  const isMatch = analysis.verdict === "MATCH";
+  const isPartial = analysis.verdict === "PARTIAL_MATCH";
+  const isMismatch = analysis.verdict === "MISMATCH";
+
+  const borderColor = isMatch
+    ? "border-emerald-200 bg-emerald-50/50"
+    : isPartial
+    ? "border-amber-200 bg-amber-50/50"
+    : "border-rose-200 bg-rose-50/50";
+
+  const textColor = isMatch
+    ? "text-emerald-800"
+    : isPartial
+    ? "text-amber-800"
+    : "text-rose-800";
+
+  return (
+    <div className={`mt-4 mb-4 rounded-xl border-2 ${borderColor} p-4 animate-in fade-in slide-in-from-bottom-2`}>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${textColor}`}>
+          <Target size={14} /> Complexity Analysis
+        </h4>
+        <span
+          className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase border ${
+            isMatch
+              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+              : isPartial
+              ? "bg-amber-100 text-amber-700 border-amber-200"
+              : "bg-rose-100 text-rose-700 border-rose-200"
+          }`}
+        >
+          {analysis.verdict.replace("_", " ")}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Time Complexity */}
+        <div className="bg-white/60 rounded-lg p-3 border border-slate-200/60">
+          <div className="flex items-center gap-2 mb-2 text-slate-500 font-bold text-xs uppercase">
+            <Clock size={12} /> Time Complexity
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <div>
+              <span className="text-[10px] text-slate-400 block">You Claimed</span>
+              <span className="font-mono font-bold text-slate-700">
+                {analysis.claimed_time || "N/A"}
+              </span>
+            </div>
+            <ArrowRight size={14} className="text-slate-300" />
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 block">Actual</span>
+              <span className="font-mono font-bold text-indigo-600">
+                {analysis.actual_time}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Space Complexity */}
+        <div className="bg-white/60 rounded-lg p-3 border border-slate-200/60">
+          <div className="flex items-center gap-2 mb-2 text-slate-500 font-bold text-xs uppercase">
+            <Database size={12} /> Space Complexity
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <div>
+              <span className="text-[10px] text-slate-400 block">You Claimed</span>
+              <span className="font-mono font-bold text-slate-700">
+                {analysis.claimed_space || "N/A"}
+              </span>
+            </div>
+            <ArrowRight size={14} className="text-slate-300" />
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 block">Actual</span>
+              <span className="font-mono font-bold text-indigo-600">
+                {analysis.actual_space}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, renderScoreBadge: any }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   
@@ -619,8 +707,14 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
                 )}
               </div>
 
+              {/* 👇 NEW: ADD COMPLEXITY FEEDBACK HERE */}
+              {h.result.complexity_analysis && (
+                <ComplexityFeedback analysis={h.result.complexity_analysis} />
+              )}
+
               <StructuredFeedback diagnosis={h.result.technical_diagnosis} />
 
+              {/* ... Rest of your component (improvement, rationale, red flags) ... */}
               {(!h.result.technical_diagnosis?.win && !h.result.technical_diagnosis?.gap?.issue && h.result.improvement) && (
                 <div className="bg-slate-50 p-5 rounded-xl border-l-4 border-slate-400">
                   <div className="flex items-start gap-3">
@@ -660,7 +754,6 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
 };
 
 
-
 export default function InterviewPage() {
   const {
     stage,
@@ -688,6 +781,10 @@ const { isListening, startListening, stopListening, transcriptBuffer, error: spe
   const [roadmapTitle, setRoadmapTitle] = useState("");
   const [timeComplexity, setTimeComplexity] = useState("");
 const [spaceComplexity, setSpaceComplexity] = useState("");
+const [roundSummary, setRoundSummary] = useState<any>(null); // Stores data from /feedback/round
+const [loadingRoundFeedback, setLoadingRoundFeedback] = useState(false);
+const [finalReport, setFinalReport] = useState<any>(null); // Stores data from /feedback/final
+const [loadingFinalReport, setLoadingFinalReport] = useState(false);
 const [showConfigModal, setShowConfigModal] = useState(false); // <--- NEW
 const [lastDiagnosis, setLastDiagnosis] = useState<any>(null); // <--- NEW
 const [codeOutput, setCodeOutput] = useState<string | null>(null);
@@ -1006,6 +1103,93 @@ useEffect(() => {
   }, [currentQuestion?.questionId]);
 // --------------------- Replace existing handleRunCode with this ---------------------
 // paste this whole function to replace your existing handleRunCode
+// --- FETCH ROUND FEEDBACK ---
+const fetchRoundFeedback = useCallback(async (finishedRound: string) => {
+  if (!sessionId || !token) return;
+  setLoadingRoundFeedback(true);
+  try {
+    const res = await fetch(`${API}/interview/feedback/round`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ sessionId, round: finishedRound }),
+    });
+    const data = await res.json();
+    if (data.summary) {
+      setRoundSummary(data.summary);
+    }
+  } catch (err) {
+    console.error("Failed to fetch round feedback", err);
+  } finally {
+    setLoadingRoundFeedback(false);
+  }
+}, [sessionId, token, API]);
+
+// --- FETCH FINAL REPORT ---
+const fetchFinalReport = useCallback(async () => {
+  if (!sessionId || !token) return;
+  
+  // 1. Set Loading State
+  setLoadingFinalReport(true);
+
+  const fetchWithRetry = async (retries = 3, delay = 1000) => {
+    try {
+      console.log(`📄 Fetching Final Report... (${retries} attempts left)`);
+      const res = await fetch(`${API}/interview/feedback/final/${sessionId}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (!res.ok) throw new Error("Report not ready");
+      
+      const data = await res.json();
+      
+      // Validation: Ensure we actually have a verdict
+      // If verdict is missing, treat as incomplete and retry
+      if (!data.overall?.verdict && retries > 0) {
+        throw new Error("Incomplete data");
+      }
+
+      console.log("✅ Final Report Loaded:", data);
+      
+      // 2. Update Data
+      setFinalReport(data);
+      
+      // 3. FORCE Loading Off (Success Path)
+      setLoadingFinalReport(false); 
+      
+    } catch (err) {
+      if (retries > 0) {
+        console.warn(`⚠️ Report fetch failed, retrying in ${delay}ms...`);
+        setTimeout(() => fetchWithRetry(retries - 1, delay), delay);
+      } else {
+        console.error("❌ Failed to load final report after retries", err);
+        // 4. FORCE Loading Off (Failure Path) - shows partial data or error
+        setLoadingFinalReport(false); 
+      }
+    }
+  };
+
+  await fetchWithRetry();
+}, [sessionId, token, API]);// Trigger Final Report when stage becomes "done"
+// Trigger Final Report when stage becomes "done"
+useEffect(() => {
+  // Only auto-fetch if we don't have the report and aren't currently loading it
+  if (stage === "done" && !finalReport && !loadingFinalReport) {
+    console.log("🎬 Interview done. Waiting for AI generation to finish writing to DB...");
+    
+    // ⏳ DELAY FIX: Wait 2.5 seconds before fetching.
+    // This prevents getting the "hardcoded" fallback data while the AI is still thinking.
+    const timer = setTimeout(() => {
+        console.log("🚀 Fetching final report now...");
+        fetchFinalReport();
+    }, 2500); 
+
+    return () => clearTimeout(timer);
+  }
+}, [stage, finalReport, loadingFinalReport, fetchFinalReport]);
 const handleRunCode = async () => {
   console.log("🔍 handleRunCode called");
   console.trace();
@@ -1958,35 +2142,72 @@ if (currentQuestion?.expectedAnswerType === "code") {
       if (excalidrawAPI) {
         excalidrawAPI.resetScene();
       }
-
- if (result?.technical_diagnosis) {
-         setLastDiagnosis(result.technical_diagnosis);
+// 1. Handle Diagnosis (Instant Feedback)
+      if (result?.technical_diagnosis) {
+        setLastDiagnosis(result.technical_diagnosis);
       } else {
-         setLastDiagnosis(null);
+        setLastDiagnosis(null);
       }
 
+      // 2. 🚨 CHECK FOR ELIMINATION / ENDED FIRST 🚨
+      // If eliminated, the hook sets stage="done". We must stop here.
+      if (result?.eliminated || result?.ended) {
+        console.log("🛑 Interview Ended via Answer Response");
+        // Force a fetch of the report after a short delay to allow DB save
+        setTimeout(() => fetchFinalReport(), 2000); 
+        return; 
+      }
+
+      // 3. Handle Round Transition
       const newRoundData = result?.round_info || result?.metadata;
-      const incomingRound = newRoundData?.current || newRoundData?.current_round;
+      
+      // ✅ FIX: Normalize strings for comparison to catch "Screening" vs "screening"
+      const prevRound = (currentRound || "").toLowerCase().trim();
+      const nextRoundRaw = (newRoundData?.current || newRoundData?.current_round || "").trim();
+      const nextRound = nextRoundRaw.toLowerCase();
 
-      if (incomingRound && incomingRound !== currentRound && incomingRound !== "complete" && result?.nextQuestion) {
-        setNextRoundName(incomingRound);
+      // 🔍 Debug Log: Check your console to see exactly what is being compared
+      console.log(`🔄 Round Transition Check: '${prevRound}' -> '${nextRound}'`);
+
+      const isRoundChange = 
+          nextRound && 
+          nextRound !== prevRound && 
+          nextRound !== "complete" && 
+          nextRound !== "completed";
+
+      if (isRoundChange) {
+        console.log("🚀 TRANSITION DETECTED: Opening Modal");
+        
+        setNextRoundName(nextRoundRaw); // Store the nice looking name (e.g. "Technical")
+        setRoundSummary(null);
         setShowRoundModal(true);
+        
+        // Fetch feedback for the round we just FINISHED (the currentRound state)
+        fetchRoundFeedback(currentRound); 
+        
+        // Update progress bars in background, but DON'T change currentRound state yet
         if (newRoundData.progress) setRoundProgress(newRoundData.progress);
-        return;
+        
+        // 🛑 RETURN EARLY: This prevents the UI from switching rounds immediately.
+        // The switch happens when the user clicks the button in the modal.
+        return; 
       }
 
+      // 4. Normal Question Update (No Round Change)
       if (newRoundData) {
-        setCurrentRound(incomingRound || currentRound);
+        setCurrentRound(nextRoundRaw || currentRound);
         if (newRoundData.progress) setRoundProgress(newRoundData.progress);
       }
+
     } catch (e) {
       console.error("Submit error:", e);
     }
   };
+
   // Helper for the modal button
   const handleNextRound = () => {
       setShowRoundModal(false);
-      setCurrentRound(nextRoundName); // Update badge to new round
+      setCurrentRound(nextRoundName); // Update badge to new round only when user clicks
   };
   /* -------------------------
       Cleanup effect (unmount) (unchanged)
@@ -2397,34 +2618,91 @@ const RoundTransitionModal = () => {
   if (!showRoundModal) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="max-w-lg w-full bg-white rounded-2xl p-8 shadow-2xl text-center animate-in fade-in zoom-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-300">
+      <div className="max-w-2xl w-full bg-white rounded-2xl p-8 shadow-2xl border border-slate-200 relative overflow-hidden">
         
-        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-100 flex items-center justify-center">
-          <CheckCircle size={40} className="text-indigo-600" />
+        {/* Background decoration */}
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+        <div className="text-center mb-8 relative z-10">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center shadow-inner border-4 border-white ring-2 ring-indigo-100">
+            <CheckCircle size={40} className="text-indigo-600" />
+          </div>
+          <h3 className="text-3xl font-black text-slate-900 mb-2 capitalize">
+            {currentRound} Round Complete
+          </h3>
+          <div className="inline-flex items-center gap-2 bg-slate-100 px-4 py-1 rounded-full">
+            <span className="text-slate-500 font-medium text-sm">Next Stage:</span>
+            <span className="text-indigo-700 font-bold uppercase tracking-wide text-sm">{nextRoundName}</span>
+          </div>
         </div>
 
-        <h3 className="text-2xl font-black text-slate-900 mb-2">
-          {currentRound.toUpperCase()} Round Completed 🎉
-        </h3>
+        {/* Feedback Container */}
+        <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 mb-8 min-h-[160px] relative">
+          {loadingRoundFeedback ? (
+            <div className="flex flex-col items-center justify-center h-32 gap-3">
+              <Loader2 className="animate-spin text-indigo-600" size={32} />
+              <span className="text-sm text-slate-500 font-medium animate-pulse">
+                AI is analyzing your {currentRound} performance...
+              </span>
+            </div>
+          ) : roundSummary ? (
+            <div className="animate-in slide-in-from-bottom-2 duration-500">
+               {/* Score */}
+               <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200">
+                 <h4 className="font-bold text-slate-700">Round Performance</h4>
+                 <div className="flex items-center gap-2">
+                   <span className="text-sm text-slate-500">Score:</span>
+                   <span className={`text-xl font-black ${
+                     (roundSummary.score || 0) > 0.7 ? 'text-emerald-600' : 'text-amber-600'
+                   }`}>
+                     {Math.round((roundSummary.score || 0) * 100)}%
+                   </span>
+                 </div>
+               </div>
+               
+               {/* AI Feedback Text */}
+               <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                 {roundSummary.feedback || "No specific feedback generated."}
+               </p>
 
-        <p className="text-slate-600 mb-6">
-          Great work! Click below to continue to the{" "}
-          <span className="font-bold capitalize">{nextRoundName}</span> round.
-        </p>
+               {/* Key Strengths Tags */}
+               {roundSummary.strengths?.length > 0 && (
+                 <div className="flex flex-wrap gap-2">
+                   {roundSummary.strengths.slice(0, 3).map((s: string, i: number) => (
+                     <span key={i} className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                       ✓ {s}
+                     </span>
+                   ))}
+                 </div>
+               )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 text-slate-400">
+              <AlertCircle size={24} className="mb-2 opacity-50" />
+              <span className="text-sm">Feedback unavailable for this round.</span>
+            </div>
+          )}
+        </div>
 
-        <button
-          onClick={handleNextRound}
-          className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-lg shadow-lg hover:scale-105 transition"
-        >
-          Start {nextRoundName} Round
-          <ArrowRight size={20} />
-        </button>
+        {/* Action Button */}
+        <div className="text-center">
+          <button
+            onClick={() => {
+                // ✅ UPDATE STATE ONLY ON CLICK
+                setShowRoundModal(false);
+                setCurrentRound(nextRoundName); 
+            }}
+            className="group relative inline-flex items-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-xl font-bold text-lg shadow-xl hover:bg-slate-800 hover:scale-[1.02] transition-all active:scale-95"
+          >
+            <span>Start {nextRoundName} Round</span>
+            <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
       </div>
     </div>
   );
 };
-
 
   const handleBeforeUnload = useCallback(
     (event: BeforeUnloadEvent) => {
@@ -2664,367 +2942,337 @@ useEffect(() => {
 }, [currentQuestion?.questionId]);
  // run when question changes
  // --- PDF GENERATION LOGIC ---
- const generatePDF = () => {
-  if (!finalDecision) return;
-  
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  let currentPage = 1;
+// --- IMPROVED PDF GENERATION LOGIC ---
+  const generatePDF = () => {
+    if (!finalDecision && !finalReport) return;
 
-  // ============================================================================
-  // MODERN GRADIENT HEADER WITH BRAND IDENTITY
-  // ============================================================================
-  const drawModernHeader = (pageNum: number) => {
-    // Gradient background simulation (jsPDF doesn't support real gradients, so we layer)
-    doc.setFillColor(79, 70, 229); // Indigo
-    doc.rect(0, 0, pageWidth, 50, "F");
-    
-    doc.setFillColor(99, 102, 241); // Lighter indigo overlay
-    doc.rect(0, 35, pageWidth, 15, "F");
+    // consolidate data source
+    const reportData = finalReport || {};
+    const decisionData = finalDecision || {};
+    const metricsData = performanceMetrics || {};
 
-    // Decorative accent line
-    doc.setFillColor(255, 255, 255);
-    doc.rect(0, 48, pageWidth, 2, "F");
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let currentPage = 1;
 
-    // Title with shadow effect (simulated with offset text)
-    doc.setTextColor(200, 200, 220); // Shadow color
-    doc.setFontSize(26);
-    doc.setFont("helvetica", "bold");
-    doc.text("AI Interview Performance Report", 15, 21);
-    
-    doc.setTextColor(255, 255, 255); // Actual text
-    doc.text("AI Interview Performance Report", 14, 20);
+    // --- HELPER: COLORS (Fixed Tuples) ---
+    // We strictly define these as tuples [r, g, b] to satisfy jspdf-autotable
+    const COLORS = {
+      primary: [79, 70, 229] as [number, number, number],      // Indigo 600
+      primaryLight: [99, 102, 241] as [number, number, number], // Indigo 500
+      secondary: [241, 245, 249] as [number, number, number],   // Slate 100
+      textMain: [30, 41, 59] as [number, number, number],       // Slate 800
+      textLight: [100, 116, 139] as [number, number, number],   // Slate 500
+      success: [16, 185, 129] as [number, number, number],      // Emerald
+      warning: [245, 158, 11] as [number, number, number],      // Amber
+      danger: [239, 68, 68] as [number, number, number],        // Red
+    };
 
-    // Subtitle
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(220, 220, 255);
-    doc.text("Comprehensive Technical Assessment Analysis", 14, 30);
+    // --- HELPER: HEADER ---
+    const drawHeader = (pageNum: number) => {
+      // Background Banner
+      doc.setFillColor(...COLORS.primary);
+      doc.rect(0, 0, pageWidth, 40, "F");
 
-    // Date and verdict badges
-    doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    })}`, 14, 42);
+      // Overlay Design
+      doc.setFillColor(...COLORS.primaryLight);
+      doc.rect(0, 0, pageWidth, 38, "F");
 
-    // Page number (bottom right)
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${pageNum}`, pageWidth - 20, pageHeight - 10, { align: "right" });
-  };
+      // Title
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      doc.text("Technical Interview Report", 14, 18);
 
-  // ============================================================================
-  // VERDICT BADGE WITH COLORED BACKGROUND
-  // ============================================================================
-  const drawVerdictBadge = (verdict: string, x: number, y: number) => {
-    const normalized = (verdict || "pending").toLowerCase();
-    let bgColor: [number, number, number];
-    let textColor: [number, number, number];
-    let label: string;
+      // Subtitle with Date
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(226, 232, 240);
+      doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 14, 28);
 
-    switch (normalized) {
-      case "strong":
-      case "exceptional":
-        bgColor = [16, 185, 129]; // Emerald
-        textColor = [255, 255, 255];
-        label = "✓ STRONG HIRE";
-        break;
-      case "acceptable":
-        bgColor = [59, 130, 246]; // Blue
-        textColor = [255, 255, 255];
-        label = "✓ ACCEPTABLE";
-        break;
-      default:
-        bgColor = [239, 68, 68]; // Red
-        textColor = [255, 255, 255];
-        label = "✗ NOT RECOMMENDED";
-    }
+      // Footer Page Num
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${pageNum}`, pageWidth - 14, pageHeight - 10, { align: "right" });
+    };
 
-    // Badge background
-    doc.setFillColor(...bgColor);
-    doc.roundedRect(x, y, 60, 10, 2, 2, "F");
+    // --- HELPER: VERDICT BADGE ---
+    const drawVerdictBadge = (verdict: string) => {
+      const v = (verdict || "pending").toLowerCase();
+      let bg = COLORS.secondary;
+      let textCol = COLORS.textMain;
+      let label = "PENDING";
 
-    // Badge text
-    doc.setTextColor(...textColor);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(label, x + 30, y + 6.5, { align: "center" });
-  };
-
-  // ============================================================================
-  // PAGE 1: EXECUTIVE SUMMARY
-  // ============================================================================
-  drawModernHeader(currentPage);
-  
-  let y = 65;
-
-  // Verdict Badge (Top Right)
-  drawVerdictBadge(finalDecision.verdict || "pending", pageWidth - 75, 55);
-
-  // Performance Metrics Cards
-  doc.setFillColor(249, 250, 251); // Very light gray background
-  doc.roundedRect(10, y, pageWidth - 20, 45, 3, 3, "F");
-
-  doc.setDrawColor(226, 232, 240); // Border
-  doc.setLineWidth(0.5);
-  doc.roundedRect(10, y, pageWidth - 20, 45, 3, 3, "S");
-
-  // Section title
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 41, 59); // Slate-800
-  doc.text("📊 Performance Overview", 15, y + 8);
-
-  y += 15;
-
-  const avgScore = (performanceMetrics?.average_score ?? 0) * 100;
-  const confidence = (finalDecision.confidence ?? 0) * 100;
-
-  // Metric cards layout
-  type Metric = {
-  label: string;
-  value: string;
-  color: [number, number, number]; // ✅ RGB tuple
-};
-
-const metrics: Metric[] = [
-  { label: "Overall Score", value: `${avgScore.toFixed(0)}%`, color: [99, 102, 241] },
-  { label: "Confidence", value: `${confidence.toFixed(0)}%`, color: [139, 92, 246] },
-  { label: "Questions", value: `${history.length}`, color: [236, 72, 153] },
-];
-
-
-  const cardWidth = (pageWidth - 40) / 3;
-  metrics.forEach((metric, idx) => {
-    const cardX = 15 + idx * (cardWidth + 5);
-    
-    // Metric value (large)
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...metric.color);
-    doc.text(metric.value, cardX + cardWidth / 2, y + 10, { align: "center" });
-
-    // Metric label (small)
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139); // Slate-500
-    doc.text(metric.label, cardX + cardWidth / 2, y + 17, { align: "center" });
-  });
-
-  y += 35;
-
-  // ============================================================================
-  // KEY INSIGHTS SECTION
-  // ============================================================================
-  doc.setFillColor(254, 252, 232); // Amber-50
-  doc.roundedRect(10, y, pageWidth - 20, 8, 2, 2, "F");
-  
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(146, 64, 14); // Amber-800
-  doc.text("💡 Key Insights", 15, y + 5.5);
-
-  y += 15;
-
-  if (finalDecision.reason) {
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "italic");
-    doc.setTextColor(71, 85, 105); // Slate-600
-    const reasonLines = doc.splitTextToSize(finalDecision.reason, pageWidth - 30);
-    doc.text(reasonLines, 15, y);
-    y += reasonLines.length * 5 + 10;
-  }
-
-  // ============================================================================
-  // STRENGTHS & WEAKNESSES - SIDE BY SIDE
-  // ============================================================================
-  const columnWidth = (pageWidth - 30) / 2;
-  const startY = y;
-
-  // Left Column: Strengths
-  if (finalDecision.key_strengths?.length > 0) {
-    doc.setFillColor(236, 253, 245); // Emerald-50
-    doc.roundedRect(10, startY, columnWidth, 8, 2, 2, "F");
-    
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(5, 150, 105); // Emerald-600
-    doc.text("✓ Key Strengths", 15, startY + 5.5);
-
-    let strengthY = startY + 13;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-
-    finalDecision.key_strengths.forEach((strength: string) => {
-      const lines = doc.splitTextToSize(`• ${strength}`, columnWidth - 10);
-      doc.text(lines, 15, strengthY);
-      strengthY += lines.length * 4.5;
-    });
-
-    y = Math.max(y, strengthY);
-  }
-
-  // Right Column: Weaknesses
-  if (finalDecision.critical_weaknesses?.length > 0) {
-    doc.setFillColor(254, 242, 242); // Rose-50
-    doc.roundedRect(15 + columnWidth, startY, columnWidth, 8, 2, 2, "F");
-    
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(225, 29, 72); // Rose-600
-    doc.text("✗ Areas for Growth", 20 + columnWidth, startY + 5.5);
-
-    let weaknessY = startY + 13;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-
-    finalDecision.critical_weaknesses.forEach((weakness: string) => {
-      const lines = doc.splitTextToSize(`• ${weakness}`, columnWidth - 10);
-      doc.text(lines, 20 + columnWidth, weaknessY);
-      weaknessY += lines.length * 4.5;
-    });
-
-    y = Math.max(y, weaknessY);
-  }
-
-  y += 15;
-
-  // ============================================================================
-  // PAGE 2: DETAILED TRANSCRIPT
-  // ============================================================================
-  doc.addPage();
-  currentPage++;
-  drawModernHeader(currentPage);
-
-  y = 65;
-
-  // Section header
-  doc.setFillColor(241, 245, 249); // Slate-100
-  doc.roundedRect(10, y, pageWidth - 20, 10, 2, 2, "F");
-  
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 41, 59);
-  doc.text("📝 Question-by-Question Analysis", 15, y + 6.5);
-
-  y += 17;
-
-  // Enhanced table data with color coding
-  const tableData = history.map((h, i) => {
-    const qText = h.q?.questionText || "Question text unavailable";
-    const verdict = h.result?.verdict?.toUpperCase() || "N/A";
-    const scoreVal = (h.result?.overall_score ?? 0) * 100;
-    const feedback = h.result?.improvement?.substring(0, 120) || 
-                    h.result?.rationale?.substring(0, 120) || 
-                    "No feedback available";
-
-    return [
-      `Q${i + 1}`,
-      qText.substring(0, 90) + (qText.length > 90 ? "..." : ""),
-      verdict,
-      `${Math.round(scoreVal)}%`,
-      feedback + (feedback.length >= 120 ? "..." : "")
-    ];
-  });
-
-  autoTable(doc, {
-    startY: y,
-    head: [['#', 'Question', 'Result', 'Score', 'Feedback']],
-    body: tableData,
-    theme: 'grid',
-    headStyles: { 
-      fillColor: [79, 70, 229], // Indigo
-      textColor: [255, 255, 255],
-      fontSize: 10,
-      fontStyle: 'bold',
-      halign: 'center',
-    },
-    columnStyles: {
-      0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
-      1: { cellWidth: 70 },
-      2: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
-      3: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
-      4: { cellWidth: 'auto' }
-    },
-    styles: { 
-      fontSize: 8,
-      cellPadding: 3,
-      lineColor: [226, 232, 240],
-      lineWidth: 0.1,
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252], // Slate-50
-    },
-    didParseCell: (data) => {
-      // Color code verdict column
-      if (data.column.index === 2 && data.section === 'body') {
-        const verdict = data.cell.raw as string;
-        if (verdict.includes('STRONG') || verdict.includes('EXCEPTIONAL')) {
-          data.cell.styles.textColor = [22, 163, 74]; // Green
-        } else if (verdict.includes('ACCEPTABLE')) {
-          data.cell.styles.textColor = [59, 130, 246]; // Blue
-        } else if (verdict.includes('WEAK') || verdict.includes('FAIL')) {
-          data.cell.styles.textColor = [220, 38, 38]; // Red
-        }
+      if (v.includes("strong") || v.includes("hire")) {
+        bg = COLORS.success;
+        textCol = [255, 255, 255] as [number, number, number];
+        label = "STRONG HIRE";
+      } else if (v.includes("acceptable")) {
+        bg = [59, 130, 246] as [number, number, number]; // Blue
+        textCol = [255, 255, 255] as [number, number, number];
+        label = "ACCEPTABLE";
+      } else if (v.includes("weak") || v.includes("reject")) {
+        bg = COLORS.danger;
+        textCol = [255, 255, 255] as [number, number, number];
+        label = "NOT RECOMMENDED";
       }
+
+      const badgeWidth = 50;
+      const xPos = pageWidth - badgeWidth - 14;
       
-      // Color code score column
-      if (data.column.index === 3 && data.section === 'body') {
-        const scoreText = data.cell.raw as string;
-        const score = parseInt(scoreText);
-        if (score >= 75) {
-          data.cell.styles.textColor = [22, 163, 74]; // Green
-        } else if (score >= 50) {
-          data.cell.styles.textColor = [234, 179, 8]; // Yellow
-        } else {
-          data.cell.styles.textColor = [220, 38, 38]; // Red
+      doc.setFillColor(...bg);
+      doc.roundedRect(xPos, 10, badgeWidth, 10, 2, 2, "F");
+      
+      doc.setTextColor(...textCol);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text(label, xPos + (badgeWidth / 2), 16.5, { align: "center" });
+    };
+
+    // ================= START PAGE 1 =================
+    drawHeader(currentPage);
+    drawVerdictBadge(reportData.overall?.verdict || decisionData.verdict);
+
+    let y = 55;
+
+    // --- SECTION 1: METRICS ---
+    const score = Math.round((reportData.overall?.score || metricsData.average_score || 0) * 100);
+    const duration = reportData.meta?.duration_minutes || "N/A";
+    const qCount = history.length;
+
+    // Draw Metric Container
+    doc.setDrawColor(200, 200, 200);
+    doc.setFillColor(252, 252, 252);
+    doc.roundedRect(14, y, pageWidth - 28, 30, 3, 3, "FD");
+
+    // Metrics Text
+    const drawMetric = (label: string, value: string, x: number) => {
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...COLORS.primary);
+      doc.text(value, x, y + 12, { align: "center" });
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...COLORS.textLight);
+      doc.text(label, x, y + 22, { align: "center" });
+    };
+
+    const sectionW = (pageWidth - 28) / 3;
+    drawMetric("Overall Score", `${score}%`, 14 + (sectionW / 2));
+    drawMetric("Questions Answered", `${qCount}`, 14 + sectionW + (sectionW / 2));
+    drawMetric("Duration (mins)", `${duration}`, 14 + (sectionW * 2) + (sectionW / 2));
+
+    y += 45;
+
+    // --- SECTION 2: EXECUTIVE SUMMARY ---
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...COLORS.textMain);
+    doc.text("Executive Summary", 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(60, 60, 60);
+const summaryText = reportData.overall?.feedback_summary || decisionData.feedback_summary || decisionData.reason || "No summary available.";    const splitSummary = doc.splitTextToSize(summaryText, pageWidth - 28);
+    doc.text(splitSummary, 14, y);
+    y += (splitSummary.length * 5) + 15;
+
+    // --- SECTION 3: SWOT ANALYSIS ---
+    const colWidth = (pageWidth - 34) / 2;
+    const startY = y;
+
+    // Strengths
+    doc.setFillColor(236, 253, 245); // Emerald 50
+    doc.roundedRect(14, y, colWidth, 8, 1, 1, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(6, 95, 70); // Emerald 800
+    doc.text("Key Strengths", 18, y + 5.5);
+    
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    const strengths = reportData.details?.key_strengths || decisionData.key_strengths || [];
+    strengths.slice(0, 5).forEach((s: string) => {
+      const lines = doc.splitTextToSize(`• ${s}`, colWidth - 8);
+      doc.text(lines, 18, y);
+      y += lines.length * 5;
+    });
+
+    // Weaknesses (reset Y)
+    let rightY = startY;
+    doc.setFillColor(254, 242, 242); // Rose 50
+    doc.roundedRect(14 + colWidth + 6, rightY, colWidth, 8, 1, 1, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(153, 27, 27); // Rose 800
+    doc.text("Areas for Improvement", 18 + colWidth + 6, rightY + 5.5);
+
+    rightY += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    const weaks = reportData.details?.areas_for_improvement || decisionData.critical_weaknesses || [];
+    weaks.slice(0, 5).forEach((w: string) => {
+      const lines = doc.splitTextToSize(`• ${w}`, colWidth - 8);
+      doc.text(lines, 18 + colWidth + 6, rightY);
+      rightY += lines.length * 5;
+    });
+
+    y = Math.max(y, rightY) + 20;
+
+    // --- SECTION 4: ROADMAP (IF AVAILABLE) ---
+    // If we have a roadmap, add a dedicated page
+    if (roadmap && roadmap.weekly_plan) {
+      doc.addPage();
+      currentPage++;
+      drawHeader(currentPage);
+      
+      let rY = 55;
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...COLORS.textMain);
+      doc.text(`Recommended Learning Path: ${roadmapTitle || "Personalized Plan"}`, 14, rY);
+      rY += 15;
+
+      const schedule = roadmap.weekly_plan || [];
+      schedule.forEach((week: any, idx: number) => {
+        // Prevent page overflow
+        if (rY > pageHeight - 40) {
+          doc.addPage();
+          currentPage++;
+          drawHeader(currentPage);
+          rY = 55;
+        }
+
+        // Week Header
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(14, rY, pageWidth - 28, 12, 2, 2, "F");
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COLORS.primary);
+        doc.text(`Week ${week.week}: ${week.theme}`, 18, rY + 8);
+        rY += 20;
+
+        // Goals
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COLORS.textMain);
+        doc.text("Primary Goals:", 18, rY);
+        rY += 6;
+        
+        doc.setFont("helvetica", "normal");
+        (week.goals || []).forEach((goal: string) => {
+           doc.text(`• ${goal}`, 22, rY);
+           rY += 5;
+        });
+        rY += 5; // Spacer
+      });
+    }
+
+    // --- SECTION 5: DETAILED TRANSCRIPT ---
+    doc.addPage();
+    currentPage++;
+    drawHeader(currentPage);
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...COLORS.textMain);
+    doc.text("Detailed Question Analysis", 14, 55);
+
+    const tableRows = history.map((h, i) => {
+      const qText = h.q?.questionText || "Question text missing";
+      const scoreVal = Math.round((h.result?.overall_score || 0) * 100);
+      const verdict = (h.result?.verdict || "N/A").toUpperCase();
+      
+      // Construct detailed feedback string
+      let feedbackStr = h.result?.improvement || h.result?.rationale || "";
+      
+      // FIX 2: Cast result to 'any' to access new properties safely
+      const resultAny = h.result as any; 
+
+      // Append Diagnosis if exists
+      const diag = resultAny?.technical_diagnosis;
+      if (diag) {
+        if (diag.gap?.issue) feedbackStr += `\n\nGAP: ${diag.gap.issue}`;
+        if (diag.fix?.action) feedbackStr += `\nFIX: ${diag.fix.action}`;
+      }
+
+      // Append Complexity Analysis if exists (for code questions)
+      // FIX 2 (continued): accessing 'complexity_analysis' safely
+      const comp = resultAny?.complexity_analysis;
+      let complexityStr = "";
+      if (comp) {
+        complexityStr = `Time: ${comp.actual_time || "N/A"}\nSpace: ${comp.actual_space || "N/A"}`;
+      }
+
+      return [
+        `Q${i + 1}`,
+        qText,
+        complexityStr, // New Column
+        `${scoreVal}%`,
+        feedbackStr
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 65,
+      head: [['#', 'Question', 'Complexity', 'Score', 'Analysis & Feedback']],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: COLORS.primary, // FIX 1: This is now correctly typed as [number, number, number]
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 9
+      },
+      columnStyles: {
+        0: { cellWidth: 10, fontStyle: 'bold' },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 25, fontSize: 8 }, // Complexity
+        3: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 'auto' } // Feedback gets remaining space
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        overflow: 'linebreak',
+        lineColor: [226, 232, 240]
+      },
+      didParseCell: (data) => {
+        // Color code Score
+        if (data.section === 'body' && data.column.index === 3) {
+          const val = parseInt(data.cell.raw as string);
+          if (val >= 70) data.cell.styles.textColor = COLORS.success;
+          else if (val >= 40) data.cell.styles.textColor = COLORS.warning;
+          else data.cell.styles.textColor = COLORS.danger;
+        }
+      },
+      didDrawPage: (data) => {
+        // Redraw header if autoTable creates new pages
+        if (data.pageNumber > currentPage) {
+            currentPage = data.pageNumber;
+            drawHeader(currentPage);
         }
       }
-    },
-    didDrawPage: (data) => {
-      // Redraw header on new pages
-      if (data.pageNumber > currentPage) {
-        currentPage = data.pageNumber;
-        drawModernHeader(currentPage);
-      }
+    });
+
+    // --- FOOTER NOTE ---
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    if (finalY < pageHeight - 20) {
+        doc.setFontSize(8);
+        doc.setTextColor(...COLORS.textLight);
+        doc.setFont("helvetica", "italic");
+        doc.text("Confidential Assessment - Powered by AI Interviewer", 14, finalY);
     }
-  });
 
-  // ============================================================================
-  // FOOTER WITH BRANDING
-  // ============================================================================
-  const finalY = (doc as any).lastAutoTable.finalY || y;
-  
-  if (finalY < pageHeight - 40) {
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.5);
-    doc.line(10, pageHeight - 30, pageWidth - 10, pageHeight - 30);
-
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.setFont("helvetica", "italic");
-    doc.text(
-      "Generated by AI Interview System • Confidential Document",
-      pageWidth / 2,
-      pageHeight - 20,
-      { align: "center" }
-    );
-  }
-
-  // ============================================================================
-  // SAVE WITH TIMESTAMP
-  // ============================================================================
-  const timestamp = new Date().toISOString().split('T')[0];
-  const filename = `Interview_Report_${timestamp}.pdf`;
-  doc.save(filename);
-};
-  const handleGetHint = async () => {
+    doc.save(`Interview_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+    const handleGetHint = async () => {
      if (hint) return;
      if (!confirm("Taking a hint will reduce your maximum score for this question by 15%. Continue?")) return;
      
@@ -4202,260 +4450,295 @@ if (excalidrawAPI) {
         )}
 
         {/* FINAL RESULTS (unchanged) */}
+        {/* FINAL RESULTS - UPDATED */}
         {stage === "done" && (
-          <div className="max-w-4xl mx-auto animate-in fade-in zoom-in duration-500">
+          <div className="max-w-5xl mx-auto animate-in fade-in zoom-in duration-500">
             <div className="p-10 rounded-3xl bg-white border-2 border-slate-200 shadow-2xl">
+              
+              {/* Header */}
               <div className="text-center mb-10">
-                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 text-white mb-5 shadow-lg">
-                  <CheckCircle size={40} />
+                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 text-white mb-6 shadow-xl ring-4 ring-green-100">
+                  <Award size={48} />
                 </div>
                 <h2 className="text-4xl font-black text-slate-900 mb-2">
-                  Interview Complete
+                  Assessment Complete
                 </h2>
-                <p className="text-slate-600 text-lg">
-                  Here's your comprehensive performance analysis
+                <p className="text-slate-500 text-lg font-medium">
+                  {finalReport?.meta?.duration_minutes 
+                    ? `Completed in ${finalReport.meta.duration_minutes} minutes` 
+                    : "Here is your comprehensive performance analysis"}
                 </p>
               </div>
 
-              {performanceMetrics && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                  <div className="text-center p-4 bg-slate-50 rounded-xl border border-slate-200">
-                    <div className="text-3xl font-black text-slate-900">
-                      {performanceMetrics.question_count}
+              {/* 1. LOADING STATE FOR REPORT */}
+ {loadingFinalReport ? (
+  <div className="py-20 text-center border-2 border-dashed border-indigo-100 rounded-2xl bg-indigo-50/30">
+    <Loader2 className="animate-spin text-indigo-600 w-12 h-12 mx-auto mb-4" />
+    <h3 className="text-xl font-bold text-slate-800">Compiling Final Report...</h3>
+    <p className="text-slate-500 mt-2 mb-6">AI is aggregating your round performance and generating detailed insights.</p>
+    
+    {/* Manual Retry Button */}
+    <button 
+      onClick={() => fetchFinalReport()}
+      className="px-6 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+    >
+      Click here if this takes too long
+    </button>
+  </div>
+              ) : (
+                <>
+                  {/* 2. TOP METRICS CARDS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                    {/* Verdict Card */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 rounded-2xl border border-indigo-100 flex flex-col items-center justify-center text-center shadow-sm">
+                      <span className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-4">Final Verdict</span>
+                      <div className="transform scale-110">
+                        {renderVerdictBadge(finalReport?.overall?.verdict || finalDecision?.verdict)}
+                      </div>
+                      {finalReport?.overall?.decision_reason && (
+                        <p className="mt-4 text-sm text-slate-500 italic max-w-sm">
+                          "{finalReport.overall.decision_reason}"
+                        </p>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Questions
+                    
+                    {/* Score Card */}
+                    <div className="bg-white p-8 rounded-2xl border-2 border-slate-100 flex flex-col items-center justify-center text-center shadow-sm relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <Target size={100} />
+                      </div>
+                      <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Overall Technical Score</span>
+                      <div className="text-7xl font-black text-slate-900 mb-2 tracking-tighter">
+                        {Math.round((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 100)}%
+                      </div>
+                      <div className="flex gap-1 mt-2">
+                        {/* Star Rating Visualization using Sparkles as Stars */}
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Sparkles 
+                            key={star} 
+                            size={24} 
+                            className={`${
+                              star <= Math.round(((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 5)) 
+                                ? "text-amber-400 fill-amber-400" 
+                                : "text-slate-200"
+                            }`} 
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center p-4 bg-indigo-50 rounded-xl border border-indigo-200">
-                    <div className="text-3xl font-black text-indigo-600">
-                      {Math.round(performanceMetrics.average_score * 100)}%
+
+                  {/* 3. EXECUTIVE SUMMARY */}
+               <div className="mb-12 bg-slate-50 p-8 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
+                    <h3 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                      <FileText size={24} className="text-indigo-600" />
+                      Executive Summary
+                    </h3>
+                    <p className="text-slate-700 text-lg leading-relaxed font-medium">
+                      {/* 👇 UPDATED LINE: Check finalDecision.feedback_summary before reason */}
+                      {finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason || "Analysis pending..."}
+                    </p>
+                  </div>
+
+                  {/* 4. ROUND-BY-ROUND PERFORMANCE (NEW) */}
+                  {finalReport?.rounds && Object.keys(finalReport.rounds).length > 0 && (
+                    <div className="mb-12 animate-in fade-in slide-in-from-bottom-4">
+                      <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                        <Layout size={24} className="text-slate-400" />
+                        Round Performance
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {Object.entries(finalReport.rounds).map(([name, data]: [string, any]) => (
+                          <div key={name} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
+                            <div className="flex justify-between items-start mb-4">
+                              <span className="capitalize font-bold text-slate-800 text-lg">{name}</span>
+                              <span className={`text-sm font-black px-3 py-1 rounded-full ${
+                                data.score > 0.7 ? 'bg-emerald-100 text-emerald-700' : 
+                                data.score > 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                              }`}>
+                                {Math.round(data.score * 100)}%
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-600 line-clamp-4 leading-relaxed mb-4 min-h-[5rem]">
+                              {data.feedback}
+                            </p>
+                            {data.weaknesses?.length > 0 && (
+                              <div className="pt-4 border-t border-slate-100">
+                                <div className="text-xs font-bold text-rose-600 uppercase mb-1 flex items-center gap-1">
+                                  <TrendingDown size={12} /> Key Weakness
+                                </div>
+                                <div className="text-xs text-slate-700 font-medium truncate">
+                                  {data.weaknesses[0]}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Avg Score
+                  )}
+
+                  {/* 5. DETAILED STRENGTHS & WEAKNESSES */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                    {/* Left: Strengths */}
+                    <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100">
+                      <h4 className="font-bold text-emerald-800 mb-6 flex items-center gap-2 text-lg">
+                        <div className="p-2 bg-emerald-100 rounded-lg">
+                          <TrendingUp size={20} className="text-emerald-600" /> 
+                        </div>
+                        Key Strengths
+                      </h4>
+                      <div className="space-y-3">
+                        {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).map((s: string, i: number) => (
+                          <div key={i} className="flex gap-3 p-4 bg-white rounded-xl border border-emerald-100 shadow-sm">
+                            <CheckCircle size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                            <span className="text-sm text-emerald-900 font-semibold">{s}</span>
+                          </div>
+                        ))}
+                        {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).length === 0 && (
+                          <div className="text-sm text-slate-400 italic px-4">None detected yet.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Weaknesses */}
+                    <div className="bg-rose-50/30 p-6 rounded-2xl border border-rose-100">
+                      <h4 className="font-bold text-rose-800 mb-6 flex items-center gap-2 text-lg">
+                        <div className="p-2 bg-rose-100 rounded-lg">
+                          <AlertCircle size={20} className="text-rose-600" />
+                        </div>
+                        Areas for Growth
+                      </h4>
+                      <div className="space-y-3">
+                        {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).map((w: string, i: number) => (
+                          <div key={i} className="flex gap-3 p-4 bg-white rounded-xl border border-rose-100 shadow-sm">
+                            <Target size={20} className="text-rose-500 shrink-0 mt-0.5" />
+                            <span className="text-sm text-rose-900 font-semibold">{w}</span>
+                          </div>
+                        ))}
+                       {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).length === 0 && (
+  <div className="text-sm text-slate-400 italic px-4">
+    {(finalReport?.overall?.verdict || finalDecision?.verdict) === "reject"
+      ? "Specific weaknesses not listed due to early termination."
+      : "None detected. Great job!"}
+  </div>
+)}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-200">
-                    <div className="text-3xl font-black text-purple-600 capitalize">
-                      {performanceMetrics.trend}
-                    </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Trend
-                    </div>
+                </>
+              )}
+
+              {/* 6. RECOMMENDED ROLE */}
+              {(finalReport?.details?.recommended_role || finalDecision?.recommended_role) && (
+                <div className="mb-10 text-center">
+                  <div className="inline-block bg-slate-900 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
+                    Recommended Role: {finalReport?.details?.recommended_role || finalDecision?.recommended_role}
                   </div>
-                  <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                    <div className="text-3xl font-black text-emerald-600">
-                      {Math.round(performanceMetrics.confidence * 100)}%
-                    </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mt-1">
-                      Confidence
+                </div>
+              )}
+
+{/* 7. ACTION BUTTONS */}
+              <div className="flex flex-col md:flex-row justify-center gap-4 mt-8 pt-8 border-t border-slate-100 flex-wrap">
+                <button
+                  onClick={() => setShowReport(!showReport)}
+                  className="px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition-all shadow-sm hover:shadow-md"
+                >
+                  {showReport ? "Hide Transcript" : "View Full Transcript"}
+                </button>
+
+                <button
+onClick={() => speakText(finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason)}
+                  className="px-6 py-3 bg-white border-2 border-indigo-100 text-indigo-600 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2"
+                >
+                  <Volume2 size={20} /> Listen to Report
+                </button>
+                
+                <button
+                  onClick={generatePDF}
+                  className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl shadow-lg hover:shadow-emerald-200 hover:-translate-y-1 transition-all font-bold flex items-center justify-center gap-2"
+                >
+                  <FileText size={20} /> Download PDF
+                </button>
+
+                {/* 🔥 NEW: Generate Roadmap Button */}
+                <button
+                  onClick={fetchRoadmap}
+                  disabled={loadingRoadmap || !!roadmap}
+                  className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${
+                    roadmap 
+                      ? "bg-slate-100 text-slate-400 cursor-default" 
+                      : "bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:shadow-blue-200 hover:-translate-y-1"
+                  }`}
+                >
+                  {loadingRoadmap ? (
+                    <Loader2 className="animate-spin" size={20} />
+                  ) : (
+                    <Map size={20} />
+                  )}
+                  {roadmap ? "Roadmap Generated" : "Generate 4-Week Roadmap"}
+                </button>
+
+                <button
+                  onClick={() => setConfirmRestartVisible(true)}
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-indigo-200 hover:-translate-y-1 font-bold transition-all shadow-lg"
+                >
+                  Start New Interview
+                </button>
+              </div>
+
+              {/* 🔥 8. ROADMAP DISPLAY (Added Here) */}
+              {roadmap && (
+                <div className="mt-12 w-full animate-in fade-in slide-in-from-bottom-6 duration-700">
+                   <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
+                </div>
+              )}
+
+              {/* 9. CONFIRM RESTART MODAL */}
+              {confirmRestartVisible && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                  <div className="max-w-md w-full bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 animate-in zoom-in">
+                    <h4 className="font-bold text-xl mb-2 text-slate-900">Start a new interview?</h4>
+                    <p className="text-slate-600 mb-6">
+                      This will clear your current progress and results. Are you sure you want to proceed?
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50"
+                        onClick={() => setConfirmRestartVisible(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-md"
+                        onClick={() => {
+                          localStorage.removeItem("active_interview_session");
+                          window.location.reload();
+                        }}
+                      >
+                        Yes, Start New
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
 
-         {finalDecision ? (
-  <div className="bg-gradient-to-br from-slate-50 to-indigo-50 rounded-2xl p-8 mb-8 border-2 border-slate-200">
-    <div className="text-sm text-slate-600 uppercase tracking-widest font-black mb-4 text-center">
-      Final Verdict
-    </div>
-    <div className="mb-5 transform scale-150 inline-block text-center w-full">
-      {renderVerdictBadge(finalDecision.verdict)}
-    </div>
-             
-    {/* 👇 NEW: Round-by-round breakdown */}
- {finalDecision.performanceMetrics &&
- typeof finalDecision.performanceMetrics === "object" &&
- !("average_score" in finalDecision.performanceMetrics) &&
- !("averageScore" in finalDecision.performanceMetrics) && (
-  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-    {Object.entries(finalDecision.performanceMetrics).map(
-      ([round, stats]: [string, any]) =>
-        typeof stats === "object" && stats !== null ? (
-          <div
-            key={round}
-            className="bg-white p-4 rounded-lg border border-slate-200"
-          >
-            <div className="text-xs uppercase text-slate-500 font-bold mb-2 capitalize">
-              {round} Round
-            </div>
-
-            <div className="text-2xl font-black text-slate-900">
-              {stats.questions ?? 0} Questions
-            </div>
-
-            {typeof stats.average_score === "number" && (
-              <div className="text-sm text-slate-600 mt-1">
-                Avg: {Math.round(stats.average_score * 100)}%
-              </div>
-            )}
-          </div>
-        ) : null
-    )}
-  </div>
-)}
-
-    {finalDecision.confidence && (
-      <div className="text-sm text-slate-500 mt-5 font-medium text-center">
-        Decision Confidence:{" "}
-        <span className="font-bold text-slate-700">
-          {(finalDecision.confidence * 100).toFixed(0)}%
-        </span>
-      </div>
-    )}
-
-    {finalDecision.reason && (
-      <div className="text-slate-800 font-medium italic max-w-2xl mx-auto text-lg leading-relaxed bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-5">
-        "{finalDecision.reason}"
-      </div>
-    )}
-
-    {/* 👇 NEW: Show elimination reason if present */}
-    {finalDecision.critical_weaknesses && finalDecision.critical_weaknesses.length > 0 && (
-      <div className="mt-5 p-4 bg-rose-50 border border-rose-200 rounded-lg">
-        <div className="text-sm font-bold text-rose-800 mb-2">Areas for Improvement:</div>
-        <ul className="text-sm text-rose-700 list-disc list-inside space-y-1">
-          {finalDecision.critical_weaknesses.map((weakness: string, idx: number) => (
-            <li key={idx}>{weakness}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {finalDecision.key_strengths && finalDecision.key_strengths.length > 0 && (
-      <div className="mt-5 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-        <div className="text-sm font-bold text-emerald-800 mb-2">Key Strengths:</div>
-        <ul className="text-sm text-emerald-700 list-disc list-inside space-y-1">
-          {finalDecision.key_strengths.map((strength: string, idx: number) => (
-            <li key={idx}>{strength}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {finalDecision.recommended_role && (
-      <div className="mt-5 text-sm text-indigo-600 font-bold text-center">
-        Recommended Role: {finalDecision.recommended_role}
-      </div>
-    )}
-  </div>
-) : (
-  <div className="text-center p-8 bg-slate-50 rounded-2xl text-slate-500 mb-8 border-2 border-slate-200">
-    Processing final results...
-  </div>
-)}
-{/* 👇 NEW: Roadmap Section Integration */}
-  <div className="mt-12">
-    {loadingRoadmap ? (
-      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border-2 border-slate-100 shadow-xl">
-        <div className="relative">
-          <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Sparkles size={20} className="text-indigo-600" />
-          </div>
-        </div>
-        <h3 className="mt-6 text-xl font-bold text-slate-900">
-          Generating Personalized Roadmap...
-        </h3>
-        <p className="text-slate-500 mt-2 text-center max-w-md">
-          AI is analyzing your mistakes in DSA and System Design to create a custom 4-week study plan.
-        </p>
-      </div>
-    ) : roadmap ? (
-      <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
-    ) : (
-      <div className="text-center mt-8">
-        <button 
-          onClick={fetchRoadmap}
-          className="text-indigo-600 font-bold hover:underline flex items-center justify-center gap-2 mx-auto"
-        >
-          <Zap size={18} /> Generate Study Plan
-        </button>
-      </div>
-    )}
-  </div>
-
-              <div className="flex justify-center gap-4">
-                <button
-                  onClick={() => setShowReport(!showReport)}
-                  className="px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition-all shadow-md hover:shadow-lg"
-                >
-                  {showReport ? "Hide Full Transcript" : "View Full Transcript"}
-                </button>
-                {finalDecision?.reason && (
-  <button
-    onClick={() => speakText(finalDecision.reason)}
-    className="px-6 py-3 bg-white border-2 border-indigo-300 text-indigo-700 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2"
-  >
-    <Volume2 size={18} />
-    Read Feedback Aloud
-  </button>
-)}
-
-<button
-  onClick={generatePDF}
-  className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl hover:shadow-xl font-bold transition-all shadow-md flex items-center gap-2"
->
-  <FileText size={18} />
-  Download Result (PDF)
-</button>
-                <button
-                  onClick={() => setConfirmRestartVisible(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-xl font-bold transition-all shadow-md"
-                >
-                  Start New Interview
-                </button>
-
-              </div>
-            </div>
-
-            {confirmRestartVisible && (
-              <div className="mt-6 max-w-2xl mx-auto p-6 bg-white rounded-xl border border-slate-200 shadow-md">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-lg">
-                      Start a new interview?
-                    </h4>
-                    <p className="text-sm text-slate-600">
-                      This will clear current progress and begin a fresh session.
-                      Are you sure you want to continue?
-                    </p>
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      className="px-4 py-2 rounded border"
-                      onClick={() => setConfirmRestartVisible(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded bg-indigo-600 text-white"
-                      onClick={() => {
-                            localStorage.removeItem("active_interview_session");
-
-                     window.location.reload();
-
-                      }}
-                    >
-                      Yes, start new
-                    </button>
+              {/* 9. FULL TRANSCRIPT (CONDITIONAL) */}
+              {showReport && (
+                <div className="mt-12 pt-10 border-t-2 border-slate-100 space-y-6">
+                  <h3 className="font-black text-2xl text-slate-900 flex items-center gap-3">
+                    <div className="w-1.5 h-8 bg-indigo-600 rounded-full"></div>
+                    Complete Transcript
+                  </h3>
+                  <div className="grid gap-6">
+                    {history.map((h, idx) => (
+                      <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
+                    ))}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-{showReport && (
-  <div className="mt-10 space-y-5">
-    <h3 className="font-black text-2xl text-slate-900 px-2 flex items-center gap-3">
-      <div className="w-1 h-8 bg-indigo-600 rounded-full"></div>
-      Complete Transcript
-    </h3>
-
-    {history.map((h, idx) => (
-      <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
-    ))}
-  </div>
-)}
+            </div>
           </div>
         )}
       </div>

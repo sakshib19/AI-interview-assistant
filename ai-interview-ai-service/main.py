@@ -13,7 +13,10 @@ import sys
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel, ConfigDict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional,cast
+
+from fastapi import HTTPException
+
 
 from groq import Groq
 from google import genai
@@ -206,23 +209,24 @@ FALLBACK_QUESTIONS = {
         "question": "Explain the difference between a process and a thread in an operating system.",
         "type": "conceptual"
     },
-    # 👇 ADD THESE MISSING KEYS TO FIX THE BEHAVIORAL ROUND 👇
+    # 👇 UPDATED SECTION START 👇
     "behavioral": {
         "question": "Tell me about a time you had to learn a new technology quickly. How did you approach it?",
         "type": "behavioral"
     },
     "collaboration": {
         "question": "Describe a situation where you had a disagreement with a team member. How did you resolve it?",
-        "type": "behavioral"
+        "type": "collaboration" # <--- FIXED: Matches key name
     },
     "ownership": {
         "question": "Tell me about a time you made a mistake in a project. How did you handle it?",
-        "type": "behavioral"
+        "type": "ownership"     # <--- FIXED: Matches key name
     },
     "achievement": {
         "question": "What is your most significant professional achievement?",
-        "type": "behavioral"
+        "type": "achievement"   # <--- FIXED: Matches key name
     }
+    # 👆 UPDATED SECTION END 👆
 }
 INTERVIEW_MODE = {
     "role": "campus_recruiter",
@@ -514,8 +518,10 @@ def is_repetitive_question(new_q: str, history: List[Dict[str, Any]]) -> bool:
         prev = h.get("question", "")
         prev_norm = normalize_text(prev)
         prev_words = set(prev_norm.split())
-
+        prev_type = h.get("type", "conceptual")
         # Exact match
+        if prev_type in ["collaboration", "ownership", "achievement", "behavioral"]:
+            continue
         if new_norm == prev_norm:
             logger.warning(f"Exact match detected: '{new_q[:50]}...'")
             return True
@@ -1011,7 +1017,7 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             "elimination": True,
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": ""
+            "feedback_summary": None # Allow AI to generate
         }
 
     # --------------------------------------------------
@@ -1028,7 +1034,7 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             "elimination": True,
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": ""
+            "feedback_summary": None # Allow AI to generate
         }
 
     # --------------------------------------------------
@@ -1049,7 +1055,7 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             "elimination": False,
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": ""
+            "feedback_summary": None # Allow AI to generate
         }
 
     # --------------------------------------------------
@@ -1069,8 +1075,8 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
                 "trigger": "chronic_underperformance",
                 "elimination": True,
                 "key_strengths": [],
-            "critical_weaknesses": [],
-            "feedback_summary": ""
+                "critical_weaknesses": [],
+                "feedback_summary": None # Allow AI to generate
             }
 
     # --------------------------------------------------
@@ -1094,23 +1100,19 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
                 ),
                 "recommended_role": "Intern" if verdict == "hire" else None,
                 "trigger": "gray_zone_timeout",
-                "elimination": verdict == "reject"
+                "elimination": verdict == "reject",
+                "feedback_summary": None # Allow AI to generate
             }
 
     # --------------------------------------------------
     # RULE 6: Hard Safety Limit (Neutral Completion)
     # --------------------------------------------------
-    # FIX: Don't treat reaching the limit as a "failure".
     if qn >= rules.get("max_questions", 10):
         final_average = avg
         
-        # Lower threshold to standard pass (0.55)
-        passed = final_average >= 0.55
         HIRE_THRESHOLD = 0.60   # > 60% = Hire
         REJECT_THRESHOLD = 0.45 # < 45% = Reject
         
-        # Use 'maybe' instead of 'reject' for borderline cases at time limit
-# Logic: Python decides the verdict based on math
         if final_average >= HIRE_THRESHOLD:
             verdict = "hire"
             summary = f"Completed with strong performance. Average: {final_average:.0%}"
@@ -1121,20 +1123,20 @@ def check_termination_rules(history: List[Dict]) -> Optional[Dict[str, Any]]:
             verdict = "maybe"
             summary = f"Borderline performance. Average: {final_average:.0%}"
         
+        # 🔥 CRITICAL FIX: feedback_summary set to None implies "AI MUST GENERATE THIS"
         return {
             "ended": True,
-            "elimination": False, # Keep False so it shows "Completed" screen, not "Eliminated"
-            "verdict": verdict,   # <--- Python sends the actual decision here
+            "elimination": False, 
+            "verdict": verdict,   
             "confidence": 0.90, 
-            "reason": summary,
+            "reason": summary, # Keep internal reason for logs
             "recommended_role": "SDE-1" if verdict == "hire" else None,
             "trigger": "max_questions",
             "key_strengths": [],
             "critical_weaknesses": [],
-            "feedback_summary": summary
+            "feedback_summary": None # <--- CHANGED from 'summary' to None
         }
-    return None  # Continue interview
-# ==========================================
+    return None  # Continue interview# ==========================================
 # QUESTION GENERATION
 # ==========================================
 
@@ -1255,7 +1257,50 @@ def validate_and_fix_test_cases(
 
     return validated[:3]  # cap for UI
 
+def condense_resume_for_verification(resume_text: str) -> str:
+    """
+    Extracts only the 'verifiable claims' (Skills, Work, Projects) 
+    to save tokens. Removes headers, contact info, and fluff.
+    """
+    if not resume_text: 
+        return ""
 
+    # If your system already has the parsed JSON resume, use that instead!
+    # But assuming we only have text, we do a quick keyword extraction:
+    
+    lines = resume_text.split('\n')
+    relevant_lines = []
+    
+    capture = False
+    # Keywords that start a "Claim Section"
+    triggers = ['experience', 'work', 'employment', 'projects', 'technical skills', 'technologies', 'history']
+    
+    for line in lines:
+        l = line.lower().strip()
+        
+        # Always keep lines with specific tech keywords
+        # (This catches skills even if they are at the top)
+        if any(t in l for t in ['python', 'java', 'aws', 'sql', 'react', 'node', 'manager', 'lead']):
+            relevant_lines.append(line)
+            continue
+
+        # Toggle capture mode on section headers
+        if any(trig in l for trig in triggers) and len(l) < 50:
+            capture = True
+            relevant_lines.append(f"\n--- {line.upper()} ---")
+            continue
+            
+        # Stop capturing on non-claim sections
+        if any(x in l for x in ['education', 'references', 'hobbies', 'declaration']) and len(l) < 50:
+            capture = False
+            continue
+            
+        if capture:
+            relevant_lines.append(line)
+
+    # Join and strictly truncate to safe limit (e.g. 2500 chars)
+    condensed = "\n".join(relevant_lines)
+    return safe_truncate(condensed, 2500)
 def extract_projects_smart(resume_text: str) -> List[Dict[str, Any]]:
     """
     GENERALIZED project extraction – works for ANY resume format
@@ -1762,6 +1807,9 @@ OUTPUT FORMAT (JSON ONLY, NO MARKDOWN):
 # ==========================================
 # SCORING SYSTEM
 # ==========================================
+def should_verify_resume(payload):
+    return payload.get("question_type") in {"system_design", "text"}
+
 def analyze_coding_behavior(playback: List[Dict[str, Any]]) -> str:
     """
     Analyzes coding history for behavioral signals (Paste Detection, Debugging, Timing).
@@ -1833,8 +1881,16 @@ def build_score_prompt(
     resume = context.get("resume", "")
     chunks = context.get("chunks", [])
     exec_result = context.get("code_execution_result", {})
+    
     playback_history = context.get("playback_history")
-
+    q_history = context.get("question_history", [])
+    history_text = "No previous history."
+    if q_history:
+        # Format last 3 questions for context checking
+        history_text = "\n".join([
+            f"Q: {h.get('question', '')[:100]}...\nA: {h.get('answer', '')[:100]}..." 
+            for h in q_history[-3:]
+        ])
     playback_summary = (
         analyze_coding_behavior(playback_history)
         if playback_history else "No behavioral data available."
@@ -1851,58 +1907,68 @@ def build_score_prompt(
     dimensions_text = "\n".join(
     f"- {name} (weight {info['weight']}): {info['description']}"
     for name, info in SCORING_DIMENSIONS.items()
-)
+)    
 
+    CONSISTENCY_RULES = ""
+    if question_type != "coding_challenge":
+        CONSISTENCY_RULES = """
+12. **RESUME & HISTORY CONSISTENCY CHECK (NON-CODING ONLY)**
+- Apply ONLY for system design or explanation questions.
+- Compare candidate claims against:
+  a) RESUME CONTEXT
+  b) PREVIOUS ANSWERS (if provided)
+
+Output:
+"consistency_check": {
+  "status": "PASS | SUSPICIOUS | CONTRADICTION",
+  "flagged_claim": "exact quoted claim or null",
+  "reason": "brief factual explanation or null"
+}
+
+Rules:
+- PASS: Claim is supported or not verifiable.
+- SUSPICIOUS: Claim inflates ownership/scope beyond resume.
+- CONTRADICTION: Claim directly conflicts with resume or earlier answer.
+
+Do NOT guess intent. Do NOT penalize learning progression.
+If the candidate explicitly corrects or downgrades an earlier claim
+(e.g., "Earlier I said I led it — to clarify, I implemented one module"),
+treat this as HONEST SELF-CORRECTION, not contradiction.
+
+"""
+    
     # ============================================================
     # CODING QUESTION PROMPT (STRICT CAMPUS LOGIC)
     # ============================================================
+    complexity_block = ""
     if question_type == "coding_challenge":
         passed = exec_result.get("passed", False)
         output_log = exec_result.get("output", "No output")
         error_type = exec_result.get("error", "None")
 
-        complexity_block = ""
+        # UPDATED: More robust checking for complexity presence
         if user_time_complexity or user_space_complexity:
+            c_time = user_time_complexity if user_time_complexity else "NOT_PROVIDED"
+            c_space = user_space_complexity if user_space_complexity else "NOT_PROVIDED"
+
             complexity_block = f"""
-COMPLEXITY CLAIM (USER PROVIDED):
-- Time Complexity: {user_time_complexity or "NOT PROVIDED"}
-- Space Complexity: {user_space_complexity or "NOT PROVIDED"}
+--------------------------------------------------
+COMPLEXITY AUDIT (MANDATORY)
+--------------------------------------------------
+Candidate Explicitly Claimed:
+- Time: {c_time}
+- Space: {c_space}
 
-COMPLEXITY AUDIT (MANDATORY & EXPLICIT):
+YOUR TASK:
+1. Analyze the 'CANDIDATE ANSWER' code to find the ACTUAL Time and Space complexity.
+2. Compare ACTUAL vs CLAIMED.
+3. Fill the `complexity_analysis` JSON object at the bottom.
 
-You MUST output the following fields clearly:
-
-- actual_time_complexity
-- actual_space_complexity
-- claimed_time_complexity
-- claimed_space_complexity
-- complexity_verdict: MATCH | PARTIAL_MATCH | MISMATCH | NOT_PROVIDED
-
-RULES (NON-NEGOTIABLE):
-
-1. If claimed complexity is NOT PROVIDED:
-   - Deduct 0.10 from technical_accuracy
-   - Set complexity_verdict = NOT_PROVIDED
-
-2. If claimed complexity is PROVIDED but WRONG:
-   - Deduct 0.20 from technical_accuracy
-   - Set complexity_verdict = MISMATCH
-
-3. If Time is correct but Space is wrong:
-   - Deduct 0.10
-   - Set complexity_verdict = PARTIAL_MATCH
-
-4. If both Time and Space are correct:
-   - Award +0.05 bonus
-   - Set complexity_verdict = MATCH
-
-5. OPTIMIZATION CAP (HARD RULE):
-   - If ACTUAL time complexity is worse than optimal:
-     → overall_score MUST be clamped to ≤ 0.75
-     → This clamp OVERRIDES all bonuses
-
-You MUST state the actual complexities explicitly before scoring.
-
+SCORING RULES FOR COMPLEXITY:
+- If CLAIMED is 'NOT_PROVIDED' → Deduct 0.10 from technical_accuracy.
+- If CLAIMED matches ACTUAL → Award +0.05 Bonus.
+- If CLAIMED differs from ACTUAL → Deduct 0.20 (Mismatch Penalty).
+- If ACTUAL Time Complexity is strictly worse than Optimal (e.g. O(n^2) vs O(n)) → Cap overall_score at 0.75.
 """
 
         return f"""
@@ -1930,6 +1996,9 @@ EXECUTION OUTPUT (TRUNCATED):
 {output_log[:800]}
 
 {complexity_block}
+PREVIOUS ANSWERS (for interviewer context only):
+{history_text}
+
 
 REFERENCE MATERIAL (if any):
 {reference_chunks}
@@ -2120,7 +2189,7 @@ CRITICAL RULES:
 """
 
     # =========================================================
-    # OUTPUT SCHEMA (UNCHANGED)
+    # OUTPUT SCHEMA (UPDATED WITH COMPLEXITY FIELD)
     # =========================================================
     schema = '''{
   "overall_score": 0.0-1.0,
@@ -2130,7 +2199,20 @@ CRITICAL RULES:
     "practical_experience": 0.0-1.0,
     "communication_clarity": 0.0-1.0
   },
+  "complexity_analysis": {
+      "claimed_time": "string | null",
+      "claimed_space": "string | null",
+      "actual_time": "string",
+      "actual_space": "string",
+      "verdict": "MATCH | MISMATCH | PARTIAL_MATCH | NOT_PROVIDED"
+  },
   "confidence": 0.0-1.0,
+    "consistency_check": {
+    "status": "PASS|SUSPICIOUS|CONTRADICTION",
+    "flagged_claim": "string or null",
+    "reason": "string or null"
+  },
+
   "verdict": "fail|weak|acceptable|strong|exceptional",
   "technical_diagnosis": {
       "sub_topics": [
@@ -2269,6 +2351,7 @@ INSTRUCTIONS:
       → depth_of_understanding ≤ 0.70
       → MEDIUM gap
       → overall_score ≤ 0.75
+{CONSISTENCY_RULES}
 
 IMPORTANT (INTERNAL CHECKS BEFORE OUTPUT):
 
@@ -2300,64 +2383,116 @@ OUTPUT FORMAT:
 {schema}
 """
     return prompt.strip()
-
 # ==========================================
 # DECISION ENGINE
 # ==========================================
 
 def build_decision_prompt(context: dict) -> str:
-    """Generate comprehensive decision prompt with performance analytics"""
+    """
+    Generate comprehensive decision prompt with specific technical evidence.
+    Decision authority may be enforced externally; the model must not override it.
+    """
     resume = context.get("resume", "")
     history = context.get("question_history", [])
+    forced_verdict = context.get("final_verdict")  # OPTIONAL but recommended
     
     metrics = calculate_performance_metrics(history)
-    
-    # Build question history summary
-    history_text = ""
-    for i, h in enumerate(history[-6:], 1):
-        q = h.get("question", "")[:150]
-        a = h.get("answer", "")[:200]
-        score = h.get("score")
-        verdict = h.get("verdict", "N/A")
-        
-        history_text += f"""
-Question {i}: {q}
-Answer: {a}
-Score: {score} ({verdict})
----"""
-    
+
+    # 1. Build detailed evidence log from Technical Diagnosis
+    evidence_log = ""
+    for i, h in enumerate(history[-8:], 1):  # Last 8 questions only
+        q_type = h.get("type", "conceptual")
+        score = h.get("score", 0)
+
+        result = h.get("result", {})
+        diag = result.get("technical_diagnosis") or h.get("technical_diagnosis") or {}
+
+        strength = diag.get("win", "N/A")
+
+        gap_obj = diag.get("gap") or {}
+        weakness = gap_obj.get("issue", "N/A") if isinstance(gap_obj, dict) else "N/A"
+
+        evidence_log += f"""
+Q{i} [{q_type.upper()}]: Score {score:.2f}
+- Verified Strength: "{strength}"
+- Detected Gap: "{weakness}"
+"""
+
     schema = '''{
   "ended": boolean,
   "verdict": "hire|reject|maybe",
   "confidence": 0.0-1.0,
-  "reason": "string (Internal hiring justification)",
-  "feedback_summary": "string (A polite, constructive paragraph addressed TO THE CANDIDATE summarizing their performance)",
+  "reason": "Internal justification for the hiring manager",
+  "feedback_summary": "Candidate-facing summary grounded strictly in evidence",
   "recommended_role": "string|null",
-  "key_strengths": ["list"],
-  "critical_weaknesses": ["list"]
+  "key_strengths": ["specific, recurring technical strengths"],
+  "critical_weaknesses": ["specific, recurring technical gaps"]
 }'''
 
-    prompt = f"""You are a Senior Hiring Manager.
-    
-    METRICS:
-    Questions: {metrics['question_count']}
-    Avg Score: {metrics['average_score']:.2f}
-    Confidence: {metrics['confidence']:.2f}
-    
-    INTERVIEW HISTORY:
-    {history_text}
-    
-    DECISION LOGIC:
-    1. **CONTINUE (ended: false)**: If unsure (Confidence < {TERMINATION_RULES['min_confidence_to_end']}).
-    2. **HIRE (ended: true)**: Strong signals across multiple topics.
-    3. **REJECT (ended: true)**: Failed basic questions or bluffing.
-    
-    INSTRUCTIONS:
-    - `reason`: Be blunt and specific for the hiring team (e.g., "Failed basic DSA").
-    - `feedback_summary`: Be professional and helpful for the candidate (e.g., "You showed strong potential in X, but we recommend focusing on Y").
-    
-    Output JSON: {schema}
-    """
+    prompt = f"""
+ROLE: You are a senior interviewer writing professional hiring feedback.
+
+TASK:
+Generate a final hiring decision summary strictly based on the verified evidence below.
+
+IMPORTANT CONSTRAINTS:
+- The hiring decision may already be determined by system rules.
+- If a FINAL_VERDICT is provided, you MUST use it and MUST NOT override it.
+- Do NOT invent strengths, weaknesses, or examples.
+- Do NOT soften or exaggerate outcomes.
+
+FINAL_VERDICT (if provided): {forced_verdict or "Not specified"}
+
+METRICS:
+- Questions Asked: {metrics['question_count']}
+- Average Score: {metrics['average_score']:.2f}
+- Performance Trend: {metrics['trend']}
+
+INTERVIEW EVIDENCE LOG:
+{evidence_log}
+
+--------------------------------------------------
+INSTRUCTIONS FOR 'feedback_summary':
+--------------------------------------------------
+1. NO GENERIC FILLER.
+   ❌ "You did well"
+   ❌ "You have potential"
+
+2. CITE VERIFIED EVIDENCE ONLY.
+   Reference concrete skills, patterns, or gaps found in the evidence log.
+
+3. BALANCED, PROFESSIONAL TONE.
+   Clear, objective, and constructive. Candidate-facing.
+
+4. LENGTH: 3-4 sentences.
+
+If evidence is limited, write a concise, factual summary without speculation.
+
+--------------------------------------------------
+INSTRUCTIONS FOR 'key_strengths' / 'critical_weaknesses':
+--------------------------------------------------
+- Extract the top 2-3 recurring themes.
+- Be technical and specific.
+  ✅ "Concurrency control", "Edge-case handling"
+  ❌ "Hard working", "Good attitude"
+
+--------------------------------------------------
+DECISION RULES:
+--------------------------------------------------
+1. CONTINUE (ended: false):
+   Confidence < {TERMINATION_RULES['min_confidence_to_end']}
+
+2. HIRE (ended: true):
+   Strong, consistent signals across multiple topics.
+
+3. REJECT (ended: true):
+   Repeated failures in fundamentals, guessing, or bluffing.
+
+--------------------------------------------------
+Output JSON ONLY:
+{schema}
+"""
+
     return prompt.strip()
 def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, Any]:
     """
@@ -2579,11 +2714,27 @@ def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
     
     if hard_decision:
         hard_decision["ended"] = True
-        # Add default feedback for hard rules
-        if hard_decision.get("verdict") == "reject":
-            hard_decision["feedback_summary"] = "The interview concluded early due to significant gaps in core technical requirements."
-        else:
-            hard_decision["feedback_summary"] = "You demonstrated excellent proficiency and we are happy to move forward."
+        
+        # --- NEW: Populate strengths/weaknesses even for hard rules ---
+        # If the rule didn't generate them, set sensible defaults based on the verdict
+        if not hard_decision.get("key_strengths"):
+            if hard_decision.get("verdict") == "hire":
+                 hard_decision["key_strengths"] = ["Strong overall performance", "Met all technical requirements"]
+            else:
+                 hard_decision["key_strengths"] = ["Participation in technical assessment"] # Neutral fallback
+            
+        if not hard_decision.get("critical_weaknesses"):
+             if hard_decision.get("verdict") == "reject":
+                 hard_decision["critical_weaknesses"] = [hard_decision.get("reason", "Did not meet technical bar.")]
+             else:
+                 hard_decision["critical_weaknesses"] = []
+
+        # Add default feedback summary if missing
+        if not hard_decision.get("feedback_summary"):
+             if hard_decision.get("verdict") == "reject":
+                hard_decision["feedback_summary"] = "The interview concluded early due to significant gaps in core technical requirements."
+             else:
+                hard_decision["feedback_summary"] = "You demonstrated excellent proficiency and we are happy to move forward."
             
         return {"ok": True, "parsed": hard_decision, "raw": "hard_rule_triggered"}
 
@@ -2638,12 +2789,18 @@ def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
         "key_strengths": parsed.get("key_strengths", []),
         "critical_weaknesses": parsed.get("critical_weaknesses", [])
     }
+
+    # --- NEW: Ensure lists are not empty if we have data ---
+    if not normalized["key_strengths"] and normalized["verdict"] == "hire":
+        normalized["key_strengths"] = ["Strong overall performance"]
+    
+    if not normalized["critical_weaknesses"] and normalized["verdict"] == "reject":
+        normalized["critical_weaknesses"] = [normalized["reason"]]
     
     if len(history) >= TERMINATION_RULES["max_questions"]:
         normalized["ended"] = True
     
-    return {"ok": True, "parsed": normalized, "raw": resp["raw"]}
-# ==========================================
+    return {"ok": True, "parsed": normalized, "raw": resp["raw"]}# ==========================================
 # PROBE GENERATION
 # ==========================================
 
@@ -2956,6 +3113,14 @@ class HintRequest(BaseModel):
     question: str
     context_type: str = "conceptual"
     current_answer: Optional[str] = ""
+class FeedbackRequest(BaseModel):
+    request_id: str
+    session_id: str
+    user_id: str
+    round_name: str
+    question_history: List[Dict[str, Any]]
+    token_budget: Optional[int] = DEFAULT_TOKEN_BUDGET
+    type: str = "round_summary"  # "round_summary" or "final_summary"    
 class InterviewState:
     """
     Stateless Interview Manager with Advanced Analytics.
@@ -3266,7 +3431,125 @@ def get_interview_state(session_id: str, resume: str) -> InterviewState:
         INTERVIEW_STATE[session_id] = InterviewState(resume)
     return INTERVIEW_STATE[session_id]
 # --- REPLACE THE MAIN ENDPOINT ---
+def build_feedback_prompt(round_name: str, history: List[Dict[str, Any]]) -> str:
+    """
+    Generates a prompt to summarize performance for a specific interview round.
+    """
+    
+    # 1. Compile History
+    summary_text = ""
+    scores = []
+    
+    for i, h in enumerate(history, 1):
+        q = h.get("question", "")[:150]
+        a = h.get("answer", "")[:200]
+        s = h.get("score", 0)
+        scores.append(s)
+        
+        # Extract technical diagnosis if available
+        # We use nested lookups to handle potentially missing result structures
+        res_block = h.get("result") or {}
+        diag = res_block.get("technical_diagnosis") or h.get("technical_diagnosis") or {}
+        
+        win = diag.get("win", "N/A")
+        
+        # 🔥 CRITICAL FIX: Handle if 'gap' is explicitly None (JSON null)
+        gap_obj = diag.get("gap")
+        if gap_obj is None: 
+            gap_obj = {}
+            
+        gap = gap_obj.get("issue", "N/A")
+        
+        summary_text += f"""
+Q{i}: {q}
+Score: {s:.2f}
+Strengths: {win}
+Weaknesses: {gap}
+---"""
 
+    # Avoid division by zero
+    avg_score = sum(scores) / max(len(scores), 1)
+
+    schema = '''{
+  "score": 0.0-1.0,
+  "feedback": "string (2-3 sentences summarizing performance in this round)",
+  "strengths": ["list of specific skills shown"],
+  "weaknesses": ["list of specific areas to improve"],
+  "recommendation": "string (e.g., 'Focus on Time Complexity', 'Review System Design basics')"
+}'''
+
+    prompt = f"""
+SYSTEM: You are a Senior Tech Interviewer.
+TASK: Generate a performance summary for the "{round_name.upper()}" round.
+
+INPUT DATA:
+{summary_text}
+
+METRICS:
+Average Score: {avg_score:.2f}
+
+INSTRUCTIONS:
+1. **Analyze Patterns**: Look for recurring issues (e.g., did they fail multiple DSA questions? did they struggle with communication?).
+2. **Be Specific**: Do not say "Good job". Say "Strong understanding of HashMaps but weak on Graph traversal".
+3. **Score**: Provide an aggregate score (0.0 - 1.0) reflecting this round specifically.
+4. **Tone**: Constructive, professional, and encouraging.
+
+OUTPUT JSON ONLY:
+{schema}
+"""
+    return prompt.strip()
+# ==========================================
+# MISSING ENDPOINT: GENERATE ROUND FEEDBACK
+# ==========================================
+@app.post("/generate_feedback")
+def generate_feedback(req: FeedbackRequest):
+    """
+    Generates a summary for a specific round (Screening, Technical, Behavioral).
+    Called by Node.js when a round transition occurs.
+    """
+    logger.info(f"🧠 Generating feedback for round: {req.round_name}")
+
+    # 1. Build the prompt using the helper function you already wrote
+    prompt = build_feedback_prompt(req.round_name, req.question_history)
+
+    # 2. Call the LLM
+    # Use a slightly higher temperature (0.4) for more natural-sounding feedback
+    resp = llm_call(prompt, temperature=0.4, max_tokens=800)
+
+    # 3. Handle LLM Failure
+    if not resp.get("ok"):
+        logger.error(f"Feedback LLM call failed: {resp.get('error')}")
+        return {
+            "result": {
+                "score": 0.0,
+                "feedback": "Feedback generation currently unavailable.",
+                "strengths": [],
+                "weaknesses": [],
+                "recommendation": "Review manually"
+            }
+        }
+
+    # 4. Parse JSON Response
+    parsed = extract_json_from_text(resp["raw"])
+    
+    if not parsed:
+        logger.error("Failed to parse feedback JSON")
+        return {
+            "result": {
+                "score": 0.0,
+                "feedback": "Could not parse AI feedback.",
+                "strengths": [],
+                "weaknesses": [],
+                "recommendation": "Review manually"
+            }
+        }
+
+    # 5. Return in the structure Node.js expects
+    return {
+        "request_id": req.request_id,
+        "result": parsed, 
+        "raw": resp["raw"]
+    }
 @app.post("/generate_question")
 def generate_question(req: GenerateQuestionRequest):
     payload = req.dict()
@@ -3288,8 +3571,10 @@ def generate_question(req: GenerateQuestionRequest):
             INTERVIEW_MODE["company_style"] = opts["company_style"]
         if "role_title" in opts:
             INTERVIEW_MODE["role_title"] = opts["role_title"]
+    
     state.hydrate_from_history(history)
     current_q_count = len([h for h in history if not h.get("is_probe", False)]) + 1
+    
     if state.eliminated:
         return {
             "request_id": payload["request_id"],
@@ -3305,8 +3590,9 @@ def generate_question(req: GenerateQuestionRequest):
                 "confidence": 0.95
             }
         }
-# =====================================================
-    # 🛑 TERMINATION CHECK (UPDATED WITH AI FEEDBACK)
+
+    # =====================================================
+    # 🛑 TERMINATION CHECK (UPDATED WITH AI FEEDBACK FIX)
     # =====================================================
     rule_termination = check_termination_rules(history)
     
@@ -3324,20 +3610,23 @@ def generate_question(req: GenerateQuestionRequest):
             }
             
             # Use low temp for consistent analysis
-            ai_decision_resp = call_decision(decision_context, temperature=0.1)
+            ai_decision_resp = call_decision(decision_context, temperature=0.3)
             ai_data = ai_decision_resp.get("parsed") or {}
 
             # 2. Merge AI insights into the Hard Rule decision
-            #    We keep the Rule's VERDICT (e.g. "hire"/"maybe") but add AI details
-            rule_termination["key_strengths"] = ai_data.get("key_strengths", [])
-            rule_termination["critical_weaknesses"] = ai_data.get("critical_weaknesses", [])
+            #    We keep the Rule's VERDICT (e.g. "hire"/"maybe") because math is safer,
+            #    but we inject the AI's textual explanations.
             
-            # Combine reasons if useful
-            ai_reason = ai_data.get("reason", "")
-            if ai_reason and len(ai_reason) > 10:
-                 rule_termination["feedback_summary"] = ai_data.get("feedback_summary", rule_termination.get("reason"))
-            else:
-                 rule_termination["feedback_summary"] = rule_termination.get("reason")
+            # Only overwrite if the rule returned empty lists or if AI has better data
+            if not rule_termination.get("key_strengths"):
+                rule_termination["key_strengths"] = ai_data.get("key_strengths", [])
+                
+            if not rule_termination.get("critical_weaknesses"):
+                rule_termination["critical_weaknesses"] = ai_data.get("critical_weaknesses", [])
+            
+            # Use AI feedback summary if available, otherwise fallback to rule reason
+            if ai_data.get("feedback_summary"):
+                rule_termination["feedback_summary"] = ai_data["feedback_summary"]
             
             # If the rule didn't specify a role, use the AI's suggestion
             if not rule_termination.get("recommended_role"):
@@ -3346,9 +3635,12 @@ def generate_question(req: GenerateQuestionRequest):
         except Exception as e:
             logger.error(f"Failed to generate AI feedback for termination: {e}")
             # Fallbacks in case AI fails
-            rule_termination["key_strengths"] = []
-            rule_termination["critical_weaknesses"] = []
-            rule_termination["feedback_summary"] = rule_termination.get("reason", "Interview concluded.")
+            if not rule_termination.get("key_strengths"):
+                 rule_termination["key_strengths"] = ["Technical Competence detected"]
+            if not rule_termination.get("critical_weaknesses"):
+                 rule_termination["critical_weaknesses"] = ["Review transcript for details"]
+            if not rule_termination.get("feedback_summary"):
+                 rule_termination["feedback_summary"] = rule_termination.get("reason", "Interview concluded.")
 
         # 3. Return the Final Decision
         return {
@@ -3361,6 +3653,7 @@ def generate_question(req: GenerateQuestionRequest):
             "final_decision": rule_termination, 
             "parsed": {"question": "Interview Complete", "type": "info"}
         }
+
     # =====================================================
     # 2. DETERMINE REQUIRED TYPE (ONCE)
     # =====================================================
@@ -3371,7 +3664,7 @@ def generate_question(req: GenerateQuestionRequest):
 
     required_type = state.next_question_type()
 
-# 🔥 PROBE TYPE INHERITANCE (CRITICAL FIX)
+    # 🔥 PROBE TYPE INHERITANCE (CRITICAL FIX)
     if is_probe and last_question_type == "coding_challenge":
         required_type = "coding_challenge"
 
@@ -3436,7 +3729,6 @@ def generate_question(req: GenerateQuestionRequest):
         candidate["type"] = required_type
 
         # 🔒 Coding challenge enforcement
-# 🔒 Coding challenge enforcement
         if required_type == "coding_challenge":
             cc = candidate.get("coding_challenge", {})
             tcs = cc.get("test_cases", [])
@@ -3473,6 +3765,7 @@ def generate_question(req: GenerateQuestionRequest):
         parsed = candidate
         chosen_raw = raw
         break
+
     # =====================================================
     # 4. FALLBACK (RARE, SAFE)
     # =====================================================
@@ -3482,7 +3775,8 @@ def generate_question(req: GenerateQuestionRequest):
         else:
             # Default to conceptual if specific type missing
             parsed = FALLBACK_QUESTIONS["conceptual"].copy()
-        parsed["type"] = "conceptual"
+            parsed["type"] = "conceptual"
+        
         parsed["_is_fallback"] = True
         chosen_raw = "FALLBACK_TRIGGERED"
 
@@ -3583,11 +3877,9 @@ def generate_roadmap(req: RoadmapRequest):
         }
 
     # -------------------- 2. Analytics Engine (RPI Calculation) --------------------
-    # We analyze the history to find 'Gaps' and 'Sub-Topics'
     gap_counts = {}
     topic_scores = {}
     
-    # Context variables
     company_style = INTERVIEW_MODE.get("company_style", "General")
     role_title = INTERVIEW_MODE.get("role_title", "Software Engineer")
 
@@ -3600,17 +3892,24 @@ def generate_roadmap(req: RoadmapRequest):
         except: 
             score = 0.0
 
-        # 2. Extract Diagnosis (New Schema) or Fallback
-        diag = h.get("result", {}).get("technical_diagnosis") or h.get("technical_diagnosis") or {}
+        # 2. Extract Diagnosis (Safe Access Fix)
+        # Use nested lookups to handle potentially missing result structures
+        res_block = h.get("result") or {}
+        diag = res_block.get("technical_diagnosis") or h.get("technical_diagnosis") or {}
         
         # Track Gaps (Frequency)
-        gap_issue = diag.get("gap", {}).get("issue")
+        # 🔥 CRITICAL FIX: Explicit check for None
+        gap_obj = diag.get("gap")
+        if gap_obj is None:
+            gap_obj = {}
+            
+        gap_issue = gap_obj.get("issue")
+        
         if gap_issue:
             gap_counts[gap_issue] = gap_counts.get(gap_issue, 0) + 1
         
         # Track Sub-Topic Scores
         sub_topics = diag.get("sub_topics", [])
-        # Fallback if no sub_topics: use the question type
         if not sub_topics:
             q_type = h.get("type", "general")
             sub_topics = [{"name": q_type}]
@@ -3622,30 +3921,24 @@ def generate_roadmap(req: RoadmapRequest):
                 topic_scores[name].append(score)
 
     # -------------------- 3. Calculate Recovery Priority Index (RPI) --------------------
-    # RPI = Gap Frequency * (1.0 - Topic Mastery)
     rpi_list = []
     
-    # If we have structured gaps, use them
     if gap_counts:
         for gap, count in gap_counts.items():
-            # Estimate severity (default high if unknown)
             severity = 0.8
             rpi = count * severity
             rpi_list.append({"topic": gap, "rpi": rpi, "type": "gap"})
     else:
-        # Fallback: Use low-scoring topics as gaps
         for topic, scores in topic_scores.items():
             avg = sum(scores) / len(scores)
             if avg < 0.65:
-                rpi = (1.0 - avg) * len(scores) # Higher RPI for frequent failures
+                rpi = (1.0 - avg) * len(scores)
                 rpi_list.append({"topic": topic, "rpi": rpi, "type": "weakness"})
 
-    # Sort by Urgency
     critical_focus_areas = sorted(rpi_list, key=lambda x: x['rpi'], reverse=True)[:4]
     focus_list_str = ", ".join([f"{x['topic']} (Priority: {x['type']})" for x in critical_focus_areas])
 
     # -------------------- 4. Determine Roadmap Strategy --------------------
-    # Calculate global average
     all_scores = [s for sub in topic_scores.values() for s in sub]
     global_avg = sum(all_scores) / max(len(all_scores), 1)
 
@@ -3653,22 +3946,19 @@ def generate_roadmap(req: RoadmapRequest):
         plan_type = f"ADVANCED {role_title.upper()} MASTERY ({company_style} TRACK)"
         strategy_instruction = (
             f"Candidate is strong (Avg: {global_avg:.2f}). Focus on System Design, Scaling, "
-            f"and Advanced Patterns suitable for {company_style} companies. "
-            "Push them from Senior to Staff level."
+            f"and Advanced Patterns suitable for {company_style} companies."
         )
     elif global_avg > 0.50:
         plan_type = f"HYBRID ACCELERATION PLAN ({company_style} TRACK)"
         strategy_instruction = (
             f"Candidate is decent (Avg: {global_avg:.2f}) but has specific gaps. "
             f"Week 1-2 must fix these gaps: {focus_list_str}. "
-            "Week 3-4 should focus on strengths."
         )
     else:
         plan_type = "CRITICAL RECOVERY PLAN"
         strategy_instruction = (
             f"Candidate is struggling (Avg: {global_avg:.2f}). "
-            f"The ENTIRE roadmap must focus on Fundamentals and fixing these critical gaps: {focus_list_str}. "
-            "Do not suggest advanced topics yet."
+            f"The ENTIRE roadmap must focus on Fundamentals and fixing these critical gaps: {focus_list_str}."
         )
 
     # -------------------- 5. Build Prompt --------------------
@@ -3679,7 +3969,7 @@ Create a 4-week study roadmap for a {role_title} candidate.
 PLAN TYPE: {plan_type}
 STRATEGY: {strategy_instruction}
 
-CRITICAL GAPS TO FIX (RPI-Prioritized):
+CRITICAL GAPS TO FIX:
 {focus_list_str if focus_list_str else "General foundations of Data Structures and Algorithms"}
 
 SKILL DATA:
@@ -3691,7 +3981,7 @@ INSTRUCTIONS:
 3. **Actionable**: Each day must include a concrete task.
 4. **IMPORTANT**:
    - Suggest **resource titles only**
-   - DO NOT include URLs
+   - DO NOT include URLs (I will add search links)
    - Titles must be realistic and searchable (e.g., “NeetCode LRU Cache”)
 
 OUTPUT JSON ONLY (No Markdown):
@@ -3717,7 +4007,6 @@ OUTPUT JSON ONLY (No Markdown):
 }}
 """
 
-
     # -------------------- 6. Call LLM --------------------
     try:
         resp = llm_call(prompt, temperature=0.4, max_tokens=2500)
@@ -3734,9 +4023,8 @@ OUTPUT JSON ONLY (No Markdown):
             for task in week.get("daily_tasks", []):
                 for res in task.get("resources", []):
                     title = res.get("title", "").strip()
-                    rtype = res.get("type", "article")
-                    if not title:
-                        continue
+                    if not title: continue
+                    
                     q = f"{title} {role_title} tutorial".replace(" ", "+")
                     url = (
                         f"https://www.youtube.com/results?search_query={q}"
@@ -3745,8 +4033,8 @@ OUTPUT JSON ONLY (No Markdown):
                     )
                     res.update({
                         "url": url,
-                    "source": "llm_suggested",     # Important for honesty
-                    "verified": False   
+                        "source": "llm_suggested",
+                        "verified": False   
                     })
 
         return {
@@ -3761,7 +4049,15 @@ OUTPUT JSON ONLY (No Markdown):
 
     except Exception as e:
         logger.exception("Roadmap generation failed")
-        return {"success": False, "error": str(e)}
+        # Return fallback instead of 500 to keep UI alive
+        return {
+            "success": False, 
+            "error": str(e),
+            "roadmap": {
+                "overall_assessment": "AI generation temporarily unavailable.",
+                "weekly_plan": []
+            }
+        }
 @app.post("/run_code")
 def run_code(req: CodeSubmissionRequest):
     import json, re
@@ -4056,6 +4352,7 @@ def generate_hint(req: HintRequest):
     except Exception as e:
         logger.error(f"Hint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))    
+
 @app.post("/score_answer")
 def score_answer(req: ScoreAnswerRequest):
     """
@@ -4063,52 +4360,58 @@ def score_answer(req: ScoreAnswerRequest):
     Falls back to OpenRouter only if Groq fails.
     """
     payload = req.dict()
-    
+
+    # ------------------------------------------------------------------
     # 1. PII redaction
+    # ------------------------------------------------------------------
     redaction_log = []
     if not payload.get("allow_pii") and payload.get("resume_summary"):
         r = redact_pii(payload["resume_summary"])
         payload["resume_summary"] = r["redacted"]
         redaction_log = r["redaction_log"]
-    
+
     enforced = enforce_budget(payload)
+    resume_context = condense_resume_for_verification(payload.get("resume_summary", ""))
+
+    # ------------------------------------------------------------------
+    # Whiteboard context (system design only)
+    # ------------------------------------------------------------------
     whiteboard_context = ""
     if payload.get("question_type") == "system_design":
-        # 1. Try Vision Analysis first (Best for diagrams)
         if payload.get("whiteboard_snapshot"):
-            logger.info("🎨 Analyzing Whiteboard Snapshot with Vision Model...")
             vision_desc = analyze_whiteboard_image(payload["whiteboard_snapshot"])
             if vision_desc:
                 whiteboard_context = f"AI VISION ANALYSIS OF DIAGRAM:\n{vision_desc}"
-        
-        # 2. Fallback to JSON keywords if Vision failed or no snapshot was provided
+
         if not whiteboard_context:
             elements = payload.get("whiteboard_elements", [])
             whiteboard_context = extract_whiteboard_keywords(elements)
-            
-        logger.info(f"🎨 Final Whiteboard Context: {whiteboard_context[:100]}...")
+
     context = {
-        "resume": enforced.get("resume", ""),
+        "resume": resume_context,
         "chunks": enforced.get("chunks", []),
         "question_type": payload.get("question_type", "text"),
         "code_execution_result": payload.get("code_execution_result"),
         "whiteboard_text_summary": whiteboard_context,
-        "playback_history": payload.get("playback_history", [])
+        "playback_history": payload.get("playback_history", []),
     }
-    
+
     prompt = build_score_prompt(
         payload.get("question_text", ""),
         payload.get("ideal_outline", ""),
         payload.get("candidate_answer", ""),
         context=context,
         user_time_complexity=payload.get("user_time_complexity"),
-        user_space_complexity=payload.get("user_space_complexity")
+        user_space_complexity=payload.get("user_space_complexity"),
     )
-    
-    # 3. FAST PATH: Try Groq First (Llama 3.3)
-    parsed = None
+
+    # ------------------------------------------------------------------
+    # 3. LLM CALL (Groq → fallback)
+    # ------------------------------------------------------------------
+    parsed: Dict[str, Any] | None = None
+    raw_text = ""
     used_source = "groq"
-    
+
     if groq_client:
         try:
             resp = groq_client.chat.completions.create(
@@ -4116,206 +4419,187 @@ def score_answer(req: ScoreAnswerRequest):
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=1500,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
             raw_text = resp.choices[0].message.content
             parsed = extract_json_from_text(raw_text)
-        except Exception as e:
-            logger.warning(f"Groq Scoring failed: {e}")
+        except Exception:
             used_source = "openrouter_fallback"
 
-    # 4. SLOW PATH: Fallback to OpenRouter if Groq failed/missing
     if not parsed:
         resp = llm_call(prompt, temperature=0.1, max_tokens=1500)
         if not resp.get("ok"):
-             raise HTTPException(status_code=502, detail=f"Scoring failed: {resp.get('error')}")
-        parsed = extract_json_from_text(resp["raw"])
+            raise HTTPException(status_code=502, detail="Scoring failed")
         raw_text = resp["raw"]
+        parsed = extract_json_from_text(raw_text)
 
-    # 5. Validation & Post-Processing
+    # ------------------------------------------------------------------
+    # 🔒 TYPE GUARD (FIXES PYLANCE ERROR)
+    # ------------------------------------------------------------------
+    if parsed is None or not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="LLM returned invalid JSON")
+
+    parsed = cast(Dict[str, Any], parsed)
+
+    # ------------------------------------------------------------------
+    # Force consistency PASS for coding questions (early, safe)
+    # ------------------------------------------------------------------
+    if payload.get("question_type") == "coding_challenge":
+        parsed["consistency_check"] = {
+            "status": "PASS",
+            "flagged_claim": None,
+            "reason": None,
+        }
+
+    parsed.setdefault(
+        "consistency_check",
+        {"status": "PASS", "flagged_claim": None, "reason": None},
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Validation & Post-processing
+    # ------------------------------------------------------------------
     validated = {
         "overall_score": None,
         "dimension_scores": {},
+        "complexity_analysis": {}, # <--- ADDED FIELD
         "confidence": 0.5,
         "verdict": "weak",
         "rationale": "",
-        "feedback_for_candidate": "No feedback provided.", # Default
+        "feedback_for_candidate": "No feedback provided.",
         "red_flags_detected": [],
         "missing_elements": [],
         "follow_up_probe": None,
-        "technical_diagnosis": {"sub_topics": [], "gap": {}, "fix": {}}
+        "technical_diagnosis": {"sub_topics": [], "gap": {}, "fix": {}},
     }
-    
+
     needs_review = False
 
-    if parsed and isinstance(parsed, dict):
-        try:
-            # Overall score
-            score = parsed.get("overall_score")
-            if score is not None:
-                validated["overall_score"] = max(0.0, min(1.0, float(score)))
-            
-            # Dimension scores
-            dim_scores = parsed.get("dimension_scores", {})
-            for dim in SCORING_DIMENSIONS.keys():
-                val = dim_scores.get(dim)
-                if val is not None:
-                    validated["dimension_scores"][dim] = max(0.0, min(1.0, float(val)))
-            
-            # Meta fields
-            validated["confidence"] = max(0.0, min(1.0, float(parsed.get("confidence", 0.5))))
-            validated["verdict"] = parsed.get("verdict", "weak")
-            validated["rationale"] = parsed.get("rationale", "")
-            validated["feedback_for_candidate"] = parsed.get("feedback_for_candidate") or parsed.get("rationale", "No feedback provided.")
-            validated["red_flags_detected"] = parsed.get("red_flags_detected", [])
-            validated["missing_elements"] = parsed.get("missing_elements", [])
-            validated["follow_up_probe"] = parsed.get("follow_up_probe")
-            
-            # Stabilize Score
-            validated["overall_score"] = normalize_overall_score(
-                  validated, 
-                  payload.get("question_history", [])
-            )
-            if payload.get("hint_used"):
-                original_score = validated["overall_score"]
-                penalized_score = original_score*0.85
-                validated["overall_score"] = round(penalized_score,2)
-                validated["rationale"] += " (Score reduced by 15% due to hint usage.)"
-                logger.info(f"💡 Hint Penalty Applied: {original_score} -> {validated['overall_score']}")
-            validated["verdict"] = derive_verdict_from_score(validated["overall_score"])
-            raw_diag = parsed.get("technical_diagnosis") or {}
-            cleaned_topics = []
-            raw_list = raw_diag.get("sub_topics", [])
-            for item in raw_list:
-                if isinstance(item, dict) and "name" in item:
-                    cleaned_topics.append(item)
-                elif isinstance(item, str):
-                    cleaned_topics.append({"name": item, "confidence": 1.0})
-            
-            # 2. Safety Net: If empty, force extraction from "win" or use default
-            if not cleaned_topics:
-                 cleaned_topics = [{"name": "Core Concepts", "confidence": 1.0}]
-            # Ensure safe defaults if LLM hallucinates structure
-            validated["technical_diagnosis"] = {
-                "sub_topics": cleaned_topics,
-                "win": raw_diag.get("win", "Good attempt."),
-                "gap": raw_diag.get("gap", {}),
-                "fix": raw_diag.get("fix", {})
-            }
-            # Record state
-            state = INTERVIEW_STATE.get(payload["session_id"])
-               
+    try:
+        # ---------------- Overall score ----------------
+        score = parsed.get("overall_score")
+        if score is not None:
+            validated["overall_score"] = max(0.0, min(1.0, float(score)))
 
-            # Gray zone check (Initial Calculation)
-            if validated["overall_score"] is not None:
-                rules = TERMINATION_RULES
-                if rules["gray_zone_min"] <= validated["overall_score"] <= rules["gray_zone_max"]:
-                    needs_review = True
-                    if not validated["follow_up_probe"]:
-                        validated["follow_up_probe"] = "Ask for specific code example or implementation detail"
-            
-            if validated["confidence"] < 0.4:
+        # ---------------- Dimension scores ----------------
+        dim_scores = parsed.get("dimension_scores", {})
+        for dim in SCORING_DIMENSIONS.keys():
+            val = dim_scores.get(dim)
+            if val is not None:
+                validated["dimension_scores"][dim] = max(0.0, min(1.0, float(val)))
+
+        # ---------------- COMPLEXITY ANALYSIS (NEW) ----------------
+        if payload.get("question_type") == "coding_challenge":
+            comp = parsed.get("complexity_analysis")
+            if comp and isinstance(comp, dict):
+                # Trust the LLM extraction
+                validated["complexity_analysis"] = {
+                    "claimed_time": comp.get("claimed_time", "N/A"),
+                    "claimed_space": comp.get("claimed_space", "N/A"),
+                    "actual_time": comp.get("actual_time", "N/A"),
+                    "actual_space": comp.get("actual_space", "N/A"),
+                    "verdict": comp.get("verdict", "NOT_PROVIDED")
+                }
+            else:
+                # Fallback: Construct using UI inputs so frontend doesn't break
+                validated["complexity_analysis"] = {
+                    "claimed_time": payload.get("user_time_complexity", "NOT_PROVIDED"),
+                    "claimed_space": payload.get("user_space_complexity", "NOT_PROVIDED"),
+                    "actual_time": "Analysis failed",
+                    "actual_space": "Analysis failed",
+                    "verdict": "NOT_PROVIDED"
+                }
+
+        # ---------------- Meta fields FIRST ----------------
+        validated["confidence"] = max(
+            0.0, min(1.0, float(parsed.get("confidence", 0.5)))
+        )
+        validated["verdict"] = parsed.get("verdict", "weak")
+        validated["rationale"] = parsed.get("rationale", "")
+        validated["feedback_for_candidate"] = (
+            parsed.get("feedback_for_candidate") or validated["rationale"]
+        )
+        validated["red_flags_detected"] = parsed.get("red_flags_detected", [])
+        validated["missing_elements"] = parsed.get("missing_elements", [])
+        validated["follow_up_probe"] = parsed.get("follow_up_probe")
+
+        # ---------------- Resume consistency (AFTER confidence) ----------------
+        if should_verify_resume(payload):
+            status = parsed["consistency_check"].get("status")
+
+            if status == "SUSPICIOUS":
+                validated["confidence"] = min(validated["confidence"], 0.6)
+                validated["red_flags_detected"].append("Claim Inflation")
+
+            elif status == "CONTRADICTION":
+                validated["confidence"] = min(validated["confidence"], 0.4)
+                validated["overall_score"] = min(validated["overall_score"], 0.65)
+                validated["red_flags_detected"].append(
+                    "Resume / Answer Contradiction"
+                )
                 needs_review = True
-            
-        except Exception as e:
-            logger.exception(f"Score validation failed: {e}")
+
+        # ---------------- Normalize score ----------------
+        validated["overall_score"] = normalize_overall_score(
+            validated, payload.get("question_history", [])
+        )
+
+        # 🔁 Re-enforce contradiction cap AFTER normalization
+        if should_verify_resume(payload):
+            if parsed["consistency_check"].get("status") == "CONTRADICTION":
+                validated["overall_score"] = min(validated["overall_score"], 0.65)
+
+        # ---------------- Hint penalty ----------------
+        if payload.get("hint_used"):
+            validated["overall_score"] = round(validated["overall_score"] * 0.85, 2)
+
+        validated["verdict"] = derive_verdict_from_score(validated["overall_score"])
+
+        # ---------------- Technical diagnosis ----------------
+        raw_diag = parsed.get("technical_diagnosis") or {}
+        topics = raw_diag.get("sub_topics", [])
+        if not topics:
+            topics = [{"name": "Core Concepts", "confidence": 1.0}]
+
+        validated["technical_diagnosis"] = {
+            "sub_topics": topics,
+            "win": raw_diag.get("win", "Good attempt."),
+            "gap": raw_diag.get("gap", {}),
+            "fix": raw_diag.get("fix", {}),
+        }
+
+        # ---------------- Review triggers ----------------
+        rules = TERMINATION_RULES
+        if (
+            validated["overall_score"] is not None
+            and rules["gray_zone_min"]
+            <= validated["overall_score"]
+            <= rules["gray_zone_max"]
+        ):
             needs_review = True
-    else:
+
+        if validated["confidence"] < 0.4:
+            needs_review = True
+
+    except Exception as e:
+        logger.exception(f"Score validation failed: {e}")
         needs_review = True
 
-    incoming_history = payload.get("question_history", []) or []
-    current_q_count = len(incoming_history) + 1
-
-    # ========================================================================
-    # 🛑 ENHANCED ANTI-LOOP MECHANISM (MAX 1 PROBE PER TOPIC)
-    # ========================================================================
-    
-    # 1. Calculate raw Gray Zone status
-    raw_in_gray_zone = (
-        needs_review 
-        and validated["overall_score"] is not None 
-        and TERMINATION_RULES["gray_zone_min"] <= validated["overall_score"] <= TERMINATION_RULES["gray_zone_max"]
-    )
-    
-    # 2. STRICT PROBE SUPPRESSION LOGIC
-    final_in_gray_zone = raw_in_gray_zone  # Default: NO PROBE
-    
-    if raw_in_gray_zone and incoming_history:
-        # ====================================================================
-        # RULE 1: Check if we JUST asked a similar question (Probe Detection)
-        # ====================================================================
-        if len(incoming_history) >= 2:
-            last_q = incoming_history[-1].get("question", "").lower()
-            prev_q = incoming_history[-2].get("question", "").lower()
-            
-            similarity = compute_similarity(last_q, prev_q)
-            
-            # If questions are >25% similar, we JUST probed. STOP.
-            if similarity > 0.45:
-                logger.info(f"🛑 Anti-Loop Rule 1: Question similarity {similarity:.2f} > 0.25. NO PROBE.")
-                final_in_gray_zone = False
-            
-            # ================================================================
-            # RULE 2: Check Topic Overlap (Prevent drilling same concept)
-            # ================================================================
-            elif incoming_history[-1].get("is_probe", False):
-                 logger.info("🛑 Anti-Loop: Last question was already a probe. Suppressing.")
-                 final_in_gray_zone = False
-        
-        # ====================================================================
-        # RULE 3: Check if Previous Answer was ALSO Weak (Consecutive Weakness)
-        # ====================================================================
-        if final_in_gray_zone:  # Only check if not already suppressed
-            prev_score = incoming_history[-1].get("score")
-            if prev_score is not None:
-                try:
-                    prev_val = float(prev_score)
-                    # If last question was ALSO in gray zone, candidate is stuck. Move on.
-                    if TERMINATION_RULES["gray_zone_min"] <= prev_val <= TERMINATION_RULES["gray_zone_max"]:
-                        logger.info(f"🛑 Anti-Loop Rule 3: Previous score {prev_val:.2f} was also gray. NO PROBE.")
-                        final_in_gray_zone = False
-                except Exception:
-                    pass
-        
-        # ====================================================================
-        # RULE 4: Hard Limit - Never Probe After Question 5
-        # ====================================================================
-
-    
-    # ========================================================================
-    # 3. DEBUGGING LOG (Shows why decision was made)
-    # ========================================================================
-    logger.info(
-        f"Probe Decision | Q#{current_q_count} | Score: {validated['overall_score']:.2f} | "
-        f"Raw Gray Zone: {raw_in_gray_zone} | Final Probe: {final_in_gray_zone}"
-    )
-    is_probe = False
-    if len(incoming_history) >= 1:
-        last_q = incoming_history[-1].get("question", "").lower()
-        current_q = payload.get("question_text", "").lower()
-        similarity = compute_similarity(last_q, current_q)
-        if similarity > 0.25:
-            is_probe = True    
-    # ========================================================================
-    # END ANTI-LOOP MECHANISM
-    # ========================================================================
-
+    # ------------------------------------------------------------------
+    # Response
+    # ------------------------------------------------------------------
     return {
         "request_id": payload["request_id"],
-        "q_count": current_q_count,
         "llm_raw": raw_text,
         "parsed": parsed,
+        "consistency_check": parsed.get("consistency_check"),
         "validated": validated,
-        "technical_diagnosis": validated["technical_diagnosis"], # ✅ ADDED THIS
-        "parse_ok": parsed is not None,
+        "technical_diagnosis": validated["technical_diagnosis"],
+        "complexity_analysis": validated.get("complexity_analysis"), # <--- ENSURE RETURNED
         "needs_human_review": needs_review,
         "source": used_source,
-        "in_gray_zone": final_in_gray_zone,
-        "is_probe": is_probe,  # Uses the suppressed value
-        "redaction_log": redaction_log
+        "redaction_log": redaction_log,
     }
-
-
 @app.post("/probe")
 def probe(req: ProbeRequest):
     """Generate diagnostic probe question for weak/vague answers"""
@@ -4541,8 +4825,8 @@ def verify_face(req: FaceVerificationRequest):
     if img2 is None:
         return JSONResponse(status_code=400, content={"verified": False, "error": "Image decode failed"})
 
-    # =========================================================================
-    # CHECK 1: COUNT FACES with MTCNN
+    # 
+    # CHECK 1: COUNT FACES with MTCNN=========================================================================
     # =========================================================================
     try:
         face_objs = DeepFace.extract_faces(

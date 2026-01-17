@@ -281,7 +281,60 @@ async function getQAByQaId(qaId) {
 function requireAuth(req, res, next) {
   return verifyToken(req, res, next);
 }
+// ---------------- NEW: FEEDBACK GENERATION HELPER ----------------
+async function generateRoundFeedback(sessionId, roundName, userId) {
+  try {
+    // 1. Get full history and filter for the specific round
+    const fullHistory = await buildQuestionHistory(sessionId);
+    const roundHistory = fullHistory.filter(q => q.round === roundName);
 
+    if (!roundHistory || roundHistory.length === 0) {
+      console.warn(`⚠️ No questions found for round '${roundName}' in session ${sessionId}`);
+      return null;
+    }
+
+    console.log(`🧠 Generating feedback for round '${roundName}' (${roundHistory.length} Qs)...`);
+
+    // 2. Prepare AI Payload
+    // This expects your Python service to handle "/generate_feedback"
+    const payload = {
+      request_id: uuidv4(),
+      session_id: sessionId,
+      user_id: userId,
+      round_name: roundName,
+      question_history: roundHistory,
+      token_budget: 1500,
+      type: "round_summary"
+    };
+
+    // 3. Call AI Service
+    const aiResp = await callWithRetry("/generate_feedback", payload, {}, 2, 500);
+    
+    // 4. Normalize Response
+    const summary = aiResp.result || aiResp.parsed || {
+      score: 0,
+      feedback: "Feedback generation unavailable.",
+      strengths: [],
+      weaknesses: [],
+      recommendation: "Review manually."
+    };
+
+    // 5. Persist to MongoDB Session Metadata
+    // We use dot notation to update just this round's entry in the map
+    const updateKey = `metadata.round_summaries.${roundName}`;
+    await Session.updateOne(
+      { sessionId },
+      { $set: { [updateKey]: summary } }
+    );
+
+    return summary;
+
+  } catch (err) {
+    console.error(`❌ Failed to generate feedback for round ${roundName}:`, err.message);
+    // Return null so the route knows it failed
+    return null;
+  }
+}
 // ---------- ROUTES ----------
 
 //ProfileDashboard
@@ -1014,7 +1067,7 @@ const newQa = await createQARecordDB(
             eliminated = true;
             eliminationReason = genResp.reason;
             ended = true;
-
+const pyDecision = genResp.final_decision || {};
             const decisionDoc = await Decision.create({
               decisionId: uuidv4(),
               sessionId,
@@ -1022,11 +1075,11 @@ const newQa = await createQARecordDB(
               verdict: "reject",
               confidence: 0.95,
               reason: eliminationReason,
-              feedback_summary: "The interview was concluded early based on technical requirements.",
-              recommended_role: null,
-              key_strengths: [],
-              critical_weaknesses: [eliminationReason],
-              rawModelOutput: { eliminated: true, reason: eliminationReason },
+            feedback_summary: pyDecision.feedback_summary || "The interview was concluded early based on technical requirements.",
+              recommended_role: pyDecision.recommended_role || null,
+key_strengths: pyDecision.key_strengths || [],
+              critical_weaknesses: pyDecision.critical_weaknesses || [eliminationReason],
+              rawModelOutput: { eliminated: true, reason: eliminationReason, py_decision: pyDecision },
               performanceMetrics: genResp.round_history || {},
               decidedAt: new Date()
             });
@@ -1297,6 +1350,97 @@ app.post("/interview/violation", requireAuth, async (req, res) => {
   }
 });
 // --- REPLACE YOUR EXISTING /interview/hint ROUTE WITH THIS ---
+// =========================================================================
+// NEW: ROUND-WISE FEEDBACK
+// Called by frontend when a round transition is detected
+// =========================================================================
+app.post("/interview/feedback/round", requireAuth, async (req, res) => {
+  try {
+    const { sessionId, round } = req.body;
+    if (!sessionId || !round) {
+      return res.status(400).json({ error: "Missing sessionId or round" });
+    }
+
+    const session = await Session.findOne({ sessionId }).lean();
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    // 1. Check Cache: If feedback already exists in DB, return it immediately
+    if (session.metadata?.round_summaries?.[round]) {
+      console.log(`📦 Returning cached feedback for session ${sessionId} / ${round}`);
+      return res.json({ 
+        round, 
+        summary: session.metadata.round_summaries[round] 
+      });
+    }
+
+    // 2. Generate Fresh: Call AI helper
+    const summary = await generateRoundFeedback(sessionId, round, req.userId);
+
+    if (!summary) {
+      return res.status(500).json({ error: "feedback_generation_failed" });
+    }
+
+    return res.json({ round, summary });
+
+  } catch (err) {
+    console.error("❌ Round feedback route error:", err.message);
+    return res.status(500).json({ error: "internal_server_error" });
+  }
+});
+
+// =========================================================================
+// NEW: FINAL COMPREHENSIVE FEEDBACK
+// Aggregates the Final Decision + All Round Summaries
+// =========================================================================
+app.get("/interview/feedback/final/:sessionId", requireAuth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    // 1. Fetch Session and Decision
+    const session = await Session.findOne({ sessionId }).lean();
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    const decision = await Decision.findOne({ sessionId }).sort({ decidedAt: -1 }).lean();
+    
+    // 2. Fetch Round Summaries (safely handle missing metadata)
+    const roundSummaries = session.metadata?.round_summaries || {};
+
+    // 3. Construct Unified Response
+    const response = {
+      sessionId,
+      status: session.status,
+      // The final high-level verdict
+      overall: {
+        verdict: decision?.verdict || "pending",
+        score: decision?.performanceMetrics?.average_score || 0,
+        decision_reason: decision?.reason || "No decision recorded.",
+        feedback_summary: decision?.feedback_summary || "Assessment complete.",
+      },
+      // Granular details from the final decision model
+      details: {
+        key_strengths: decision?.key_strengths || [],
+        areas_for_improvement: decision?.critical_weaknesses || [],
+        recommended_role: decision?.recommended_role || null
+      },
+      // The specific breakdowns per round (screening, technical, behavioral)
+      rounds: roundSummaries, 
+      // Meta info for UI display
+      meta: {
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        duration_minutes: session.endedAt && session.startedAt 
+          ? Math.round((new Date(session.endedAt) - new Date(session.startedAt)) / 60000) 
+          : 0
+      }
+    };
+
+    return res.json(response);
+
+  } catch (err) {
+    console.error("❌ Final feedback route error:", err.message);
+    return res.status(500).json({ error: "internal_server_error" });
+  }
+});
 app.post("/interview/hint", requireAuth, async (req, res) => {
   try {
     const { sessionId, questionId, questionText, type,currentAnswer } = req.body;
@@ -1336,6 +1480,8 @@ app.post("/interview/hint", requireAuth, async (req, res) => {
   }
 });
 // Interview end
+// server.js - Updated /interview/end endpoint
+
 app.post("/interview/end", requireAuth, async (req, res) => {
   try {
     console.log("🏁 Ending interview:", req.body.sessionId);
@@ -1344,6 +1490,20 @@ app.post("/interview/end", requireAuth, async (req, res) => {
 
     const s = await getSessionByIdDB(sessionId);
     if (!s) return res.status(404).json({ error: "session_not_found" });
+
+    // --- NEW: Attempt to generate feedback for the current unfinished round ---
+    // This ensures 'rounds' is populated even if the interview ends mid-round
+    const currentRound = s.metadata?.current_round;
+    // Only generate if we don't already have feedback for this round
+    if (currentRound && !s.metadata?.round_summaries?.[currentRound]) {
+         try {
+             console.log(`📝 Generating partial feedback for interrupted round: ${currentRound}`);
+             // We call the internal helper function
+             await generateRoundFeedback(sessionId, currentRound, req.userId);
+         } catch (e) {
+             console.warn("⚠️ Could not generate final round feedback (non-critical):", e.message);
+         }
+    }
 
     // 1. Gather Data
     const history = await buildQuestionHistory(sessionId);
@@ -1394,8 +1554,7 @@ app.post("/interview/end", requireAuth, async (req, res) => {
         };
 
         const aiDecisionResp = await callAiFinalizeDecision(decisionPayload);
-        const aiData = aiDecisionResp.result?.parsed || {};
-
+const aiData = aiDecisionResp.result?.parsed || aiDecisionResp.parsed || {};
         decisionDoc = await Decision.create({
           decisionId: uuidv4(),
           sessionId,
@@ -1469,7 +1628,6 @@ app.post("/interview/end", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "failed_to_end_session" });
   }
 });
-
 app.get("/interview/session/:sessionId", requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
