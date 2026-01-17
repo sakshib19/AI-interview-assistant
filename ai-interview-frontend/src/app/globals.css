@@ -68,3 +68,13 @@ body {
 .excalidraw .layer-ui__wrapper {
   z-index: 5 !important;
 }
+.pdf-safe,
+.pdf-safe * {
+  background: #111827 !important;
+  color: #e5e7eb !important;
+
+  backdrop-filter: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}

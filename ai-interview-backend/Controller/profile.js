@@ -1,81 +1,93 @@
 const User = require("../models/User");
 const Session = require("../models/Session");
 const QA = require("../models/QA");
+const Decision = require("../models/Decision");
 
 async function getProfileDashboard(req, res) {
   try {
     const userId = req.userId;
 
-    // ================= USER =================
+    /* ================= USER ================= */
     const user = await User.findById(userId)
-      .select("name email role createdAt lastLogin")
+      .select("name email role")
       .lean();
 
-    // ================= SESSIONS =================
+    /* ================= SESSIONS ================= */
     const sessions = await Session.find({ userId })
       .sort({ startedAt: -1 })
       .lean();
 
-    const totalInterviews = sessions.length;
+    /* ================= SAFE SESSION IDS ================= */
+    const sessionIds = sessions
+      .map(s => s.sessionId)
+      .filter(Boolean); // 🔒 CRITICAL
 
-    // ================= QAs (Scores) =================
+    /* ================= DECISIONS ================= */
+    const decisions = sessionIds.length
+      ? await Decision.find({ sessionId: { $in: sessionIds } }).lean()
+      : [];
+
+    const decisionMap = {};
+    decisions.forEach(d => {
+      decisionMap[d.sessionId] = d;
+    });
+
+    /* ================= QAs ================= */
     const qas = await QA.find({ userId }).lean();
-    const scores = qas
-      .map(q => q.score)
-      .filter(s => typeof s === "number");
 
-    const averageScore =
-      scores.length > 0
-        ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
-        : 0;
+    /* ================= STATS ================= */
+    const scores = qas.map(q => q.score).filter(s => typeof s === "number");
+    const averageScore = scores.length
+      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+      : null;
 
-    // ================= INTERVIEW HISTORY =================
+    /* ================= HISTORY ================= */
     const interviewHistory = [];
 
     for (const session of sessions) {
       const sessionQAs = qas.filter(q => q.sessionId === session.sessionId);
 
-      const rounds = {
-        screening: [],
-        technical: [],
-        behavioral: []
-      };
+      const rounds = { screening: [], technical: [], behavioral: [] };
 
-      // group QAs by round
       sessionQAs.forEach(q => {
-        // Fallback: if no round metadata, treat as screening or infer from logic
-        const round = q.metadata?.round || "screening"; 
-        if (rounds[round]) {
-          rounds[round].push(q);
-        }
+        const round = q.metadata?.round || "screening";
+        if (rounds[round]) rounds[round].push(q);
       });
 
-      // helper to compute avg + feedback
-      const summarizeRound = (roundQas) => {
-        if (!roundQas || !roundQas.length) return null;
+      const summarizeRound = (roundQAs) => {
+        if (!roundQAs.length) return null;
 
-        const roundScores = roundQas.map(q => q.score).filter(s => typeof s === "number");
-        const avgScore = roundScores.length
-          ? Math.round((roundScores.reduce((a, b) => a + b, 0) / roundScores.length) * 100) / 100
+        const scores = roundQAs.map(q => q.score).filter(s => typeof s === "number");
+        const avgScore = scores.length
+          ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
           : null;
 
-        const lastQA = roundQas[roundQas.length - 1];
+        const lastQA = roundQAs.at(-1);
 
         return {
           averageScore: avgScore,
-          feedback: lastQA?.improvement || lastQA?.rationale || null
+          feedback: Array.isArray(lastQA?.improvement)
+            ? lastQA.improvement.join(" ")
+            : lastQA?.rationale || null
         };
       };
+
+      const decision = decisionMap[session.sessionId];
 
       interviewHistory.push({
         sessionId: session.sessionId,
         date: session.startedAt,
-        // 👇👇👇 CRITICAL ADDITION: Pass these fields to frontend 👇👇👇
+        endedAt: session.endedAt,
+
         violationCount: session.violationCount || 0,
-        events: session.events || [], 
-        qaIds: session.qaIds || [], // Helpful for calculating total questions
-        status: session.status,     // Helpful to know if completed/active
-        // 👆👆👆 END ADDITION 👆👆👆
+        events: session.events || [],
+        qaIds: session.qaIds || [],
+        status: session.status,
+
+        finalVerdict: decision?.verdict || "pending",
+        decisionConfidence: decision?.confidence || 0,
+        recommendedRole: decision?.recommended_role || null,
+
         rounds: {
           screening: summarizeRound(rounds.screening),
           technical: summarizeRound(rounds.technical),
@@ -84,17 +96,18 @@ async function getProfileDashboard(req, res) {
       });
     }
 
+    /* ================= RESPONSE ================= */
     return res.json({
       user,
       stats: {
-        totalInterviews,
+        totalInterviews: sessions.length,
         averageScore
       },
       interviewHistory
     });
 
   } catch (err) {
-    console.error("Profile dashboard error:", err);
+    console.error("❌ Profile dashboard error:", err);
     return res.status(500).json({ error: "failed_to_load_profile_dashboard" });
   }
 }

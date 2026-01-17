@@ -114,8 +114,14 @@ export default function ProfilePage() {
     
     return {
         sessionId: currentSession.sessionId,
-        finalVerdict: (rawSession.violationCount || 0) > 10 ? "Reject" : "Hire",
-        confidence: 85,
+        finalVerdict:
+          rawSession.finalVerdict === "hire"
+            ? "Hire"
+            : rawSession.finalVerdict === "reject"
+            ? "Reject"
+            : "Pending",
+
+        confidence: rawSession.decisionConfidence || 0,
         duration: 45,
         totalQuestions: rawSession.qaIds?.length || 0,
         
