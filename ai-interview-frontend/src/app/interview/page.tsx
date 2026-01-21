@@ -11,6 +11,7 @@ import "@excalidraw/excalidraw/index.css";
 // import { exportToBlob } from "@excalidraw/excalidraw";
 import autoTable from "jspdf-autotable";
 import Editor from "@monaco-editor/react";
+import { AudioVisualizer } from "../components/AudioVisualizer";
 import InterviewConfigModal from "../components/InterviewConfigModal";
 import {
   Sparkles,
@@ -50,6 +51,12 @@ import {
   ChevronDown,
   Clock,     // <--- NEW
   Database,
+  Bug,
+  Layers,
+  Sparkle,
+  Terminal,
+  Trash2,
+  Timer
     // <--- NEW // Added for loading indicator
 } from "lucide-react";
 
@@ -190,28 +197,29 @@ const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
     const t = (title || "").toLowerCase();
     if (t.includes("advanced") || t.includes("mastery")) {
       return {
-        bg: "bg-gradient-to-br from-amber-500 via-orange-500 to-red-500",
-        icon: "text-amber-100",
-        border: "border-amber-200",
-        badge: "bg-amber-50 text-amber-700 border-amber-200",
-        accent: "text-amber-600"
+        bg: "bg-gradient-to-br from-amber-600/20 via-orange-600/20 to-red-600/20 border-amber-500/30",
+        icon: "text-amber-400",
+        border: "border-amber-500/30",
+        badge: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+        accent: "text-amber-400"
       };
     }
     if (t.includes("recovery") || t.includes("foundations")) {
       return {
-        bg: "bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600",
-        icon: "text-blue-100",
-        border: "border-blue-200",
-        badge: "bg-blue-50 text-blue-700 border-blue-200",
-        accent: "text-blue-600"
+        bg: "bg-gradient-to-br from-blue-600/20 via-indigo-600/20 to-purple-600/20 border-blue-500/30",
+        icon: "text-blue-400",
+        border: "border-blue-500/30",
+        badge: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+        accent: "text-blue-400"
       };
     }
+    // Default Lime Theme
     return {
-      bg: "bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600",
-      icon: "text-emerald-100",
-      border: "border-emerald-200",
-      badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      accent: "text-emerald-600"
+      bg: "bg-gradient-to-br from-[#cbe557]/20 via-emerald-600/20 to-teal-600/20 border-[#cbe557]/30",
+      icon: "text-[#cbe557]",
+      border: "border-[#cbe557]/30",
+      badge: "bg-[#cbe557]/10 text-[#cbe557] border-[#cbe557]/30",
+      accent: "text-[#cbe557]"
     };
   };
 
@@ -235,25 +243,24 @@ const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
 
   return (
     <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="bg-gradient-to-b from-white to-slate-50 rounded-3xl border border-slate-200 shadow-2xl overflow-hidden backdrop-blur-sm">
+      <div className="bg-neutral-900/50 rounded-3xl border border-white/10 shadow-2xl overflow-hidden backdrop-blur-md">
         
         {/* Modern Header with Glassmorphism */}
-        <div className={`${theme.bg} p-10 text-white relative overflow-hidden`}>
-          <div className="absolute inset-0 bg-black/10 backdrop-blur-3xl"></div>
+        <div className={`${theme.bg} p-10 relative overflow-hidden border-b ${theme.border}`}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-xl"></div>
           <div className="relative z-10">
             <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md border border-white/30">
-                <Map className={theme.icon} size={28} strokeWidth={2.5} />
+              <div className={`p-3 rounded-2xl backdrop-blur-md border border-white/10 bg-white/5 ${theme.icon}`}>
+                <Map size={28} strokeWidth={2.5} />
               </div>
-              <h2 className="text-4xl font-black tracking-tight">{displayTitle}</h2>
+              <h2 className="text-4xl font-black tracking-tight text-white">{displayTitle}</h2>
             </div>
-            <p className="text-white/95 text-lg leading-relaxed max-w-4xl font-medium">
+            <p className="text-neutral-300 text-lg leading-relaxed max-w-4xl font-medium">
               {assessment}
             </p>
           </div>
           {/* Decorative Elements */}
-          <div className="absolute -right-20 -top-20 w-80 h-80 bg-white/10 rounded-full blur-3xl"></div>
-          <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-white/10 rounded-full blur-3xl"></div>
+          <div className={`absolute -right-20 -top-20 w-80 h-80 rounded-full blur-3xl opacity-20 ${theme.bg}`}></div>
         </div>
 
         <div className="p-10">
@@ -262,7 +269,7 @@ const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
             <div className="mb-12">
               <div className="flex items-center gap-3 mb-6">
                 <Target size={22} className={theme.accent} strokeWidth={2.5} />
-                <h3 className="font-black text-2xl text-slate-900">Skill Gap Analysis</h3>
+                <h3 className="font-black text-2xl text-white">Skill Gap Analysis</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(radar).map(([skill, score]: [string, any]) => {
@@ -271,16 +278,16 @@ const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
                   const isMid = percentage > 40;
                   
                   return (
-                    <div key={skill} className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                    <div key={skill} className="group bg-white/5 p-5 rounded-2xl border border-white/10 hover:border-white/20 hover:bg-white/10 transition-all duration-300 shadow-lg">
                       <div className="flex justify-between items-start mb-3">
-                        <span className="font-bold text-slate-900 text-sm uppercase tracking-wide">
+                        <span className="font-bold text-neutral-300 text-sm uppercase tracking-wide">
                           {skill.replace(/_/g, " ")}
                         </span>
-                        <span className={`text-2xl font-black ${isStrong ? 'text-emerald-600' : isMid ? 'text-amber-600' : 'text-rose-600'}`}>
+                        <span className={`text-2xl font-black ${isStrong ? 'text-emerald-400' : isMid ? 'text-amber-400' : 'text-rose-400'}`}>
                           {percentage}%
                         </span>
                       </div>
-                      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                      <div className="h-2 w-full bg-black/50 rounded-full overflow-hidden">
                         <div 
                           className={`h-full rounded-full transition-all duration-1000 ${isStrong ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : isMid ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-rose-500 to-red-500'}`}
                           style={{ width: `${percentage}%` }} 
@@ -295,21 +302,21 @@ const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
 
           {/* Modern Timeline */}
           <div className="space-y-8">
-            <div className="flex items-center gap-3 pb-6 border-b-2 border-slate-200">
+            <div className="flex items-center gap-3 pb-6 border-b border-white/10">
               <Calendar size={22} className={theme.accent} strokeWidth={2.5} />
-              <h3 className="font-black text-2xl text-slate-900">Actionable Schedule</h3>
+              <h3 className="font-black text-2xl text-white">Actionable Schedule</h3>
             </div>
             
             {schedule.length === 0 ? (
-               <div className="text-center p-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-300">
-                 <div className="text-slate-400 mb-2">
+               <div className="text-center p-12 bg-white/5 rounded-2xl border-2 border-dashed border-white/10">
+                 <div className="text-neutral-500 mb-2">
                    <Sparkles size={48} className="mx-auto opacity-50" />
                  </div>
-                 <p className="text-slate-600 font-medium">No specific schedule generated.</p>
-                 <p className="text-xs mt-2 text-slate-400">(Check console for debug data)</p>
+                 <p className="text-neutral-400 font-medium">No specific schedule generated.</p>
+                 <p className="text-xs mt-2 text-neutral-600">(Check console for debug data)</p>
                </div>
             ) : (
-              <div className="space-y-8">
+              <div className="space-y-6">
                 {schedule.map((week: any, wIdx: number) => (
                   <WeekCard key={wIdx} week={week} theme={theme} />
                 ))}
@@ -327,33 +334,33 @@ const WeekCard = ({ week, theme }: any) => {
   const [isExpanded, setIsExpanded] = useState(true);
   
   return (
-    <div className="bg-white rounded-2xl border-2 border-slate-200 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden">
+    <div className={`rounded-2xl border transition-all duration-300 overflow-hidden bg-black/20 ${theme.border} hover:bg-black/40`}>
       <div 
-        className="p-6 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+        className="p-6 cursor-pointer select-none"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`${theme.bg} w-12 h-12 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-lg`}>
+          <div className="flex items-center gap-5">
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg shadow-lg border border-white/10 ${theme.bg.split(' ')[0]} ${theme.icon} backdrop-blur-md`}>
               {week.week}
             </div>
             <div>
-              <h4 className="text-xl font-black text-slate-900">{week.theme}</h4>
-              <div className="flex flex-wrap gap-2 mt-2">
+              <h4 className="text-xl font-bold text-white mb-2">{week.theme}</h4>
+              <div className="flex flex-wrap gap-2">
                 {week.goals?.slice(0, 2).map((g: string, i: number) => (
                   <span key={i} className={`text-xs font-bold px-3 py-1 rounded-full border ${theme.badge}`}>
                     🎯 {g}
                   </span>
                 ))}
                 {week.goals?.length > 2 && (
-                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 text-slate-600">
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-white/10 text-neutral-400 border border-white/10">
                     +{week.goals.length - 2} more
                   </span>
                 )}
               </div>
             </div>
           </div>
-          <div className="text-slate-400">
+          <div className="text-neutral-500">
             {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
           </div>
         </div>
@@ -362,32 +369,32 @@ const WeekCard = ({ week, theme }: any) => {
       {isExpanded && (
         <div className="px-6 pb-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
           {week.daily_tasks?.map((task: any, dIdx: number) => (
-            <div key={dIdx} className="bg-gradient-to-br from-slate-50 to-white p-6 rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all group">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs font-black bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
+            <div key={dIdx} className="bg-white/5 p-5 rounded-xl border border-white/10 hover:border-white/20 transition-all group">
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded bg-black/40 ${theme.accent}`}>
                   {task.day}
                 </span>
               </div>
-              <p className="font-semibold text-slate-800 mb-5 text-lg leading-relaxed">{task.activity}</p>
+              <p className="font-medium text-neutral-200 mb-4 text-base leading-relaxed">{task.activity}</p>
               
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {task.resources?.map((res: any, rIdx: number) => (
                   <a 
                     key={rIdx} 
                     href={res.url} 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="flex items-center gap-4 p-4 rounded-xl bg-white hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 border-2 border-slate-100 hover:border-indigo-200 transition-all group/link shadow-sm hover:shadow-md"
+                    className="flex items-center gap-4 p-3 rounded-lg bg-black/20 hover:bg-black/40 border border-white/5 hover:border-white/20 transition-all group/link"
                   >
-                    <div className={`shrink-0 p-2.5 rounded-lg shadow-sm ${res.type === 'video' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                      {res.type === 'video' ? <Video size={20} strokeWidth={2.5} /> : <BookOpen size={20} strokeWidth={2.5} />}
+                    <div className={`shrink-0 p-2 rounded-lg ${res.type === 'video' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      {res.type === 'video' ? <Video size={18} /> : <BookOpen size={18} />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-slate-800 group-hover/link:text-indigo-600 truncate transition-colors">
+                      <div className="text-sm font-bold text-neutral-300 group-hover/link:text-white truncate transition-colors">
                         {res.title}
                       </div>
                     </div>
-                    <ExternalLink size={16} className="text-slate-400 group-hover/link:text-indigo-600 transition-colors" />
+                    <ExternalLink size={14} className="text-neutral-500 group-hover/link:text-white transition-colors" />
                   </a>
                 ))}
               </div>
@@ -398,7 +405,6 @@ const WeekCard = ({ week, theme }: any) => {
     </div>
   );
 };
-
  const CodeReplayPlayer = ({ history }: { history: any[] }) => {
   const [index, setIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -638,23 +644,46 @@ const ComplexityFeedback = ({ analysis }: { analysis?: any }) => {
 };
 const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, renderScoreBadge: any }) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  
+
+  // Check if this specific history item was a debugging task
+  const isDebugging = h.type === 'debugging' || (h.q?.metadata?.type === 'debugging');
+
   return (
-    <div className="bg-white rounded-2xl border-2 border-slate-200 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden">
+    <div 
+      className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+        isDebugging 
+          ? "bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]" // Dark Amber for Debugging
+          : "bg-white/5 border-white/10 hover:border-white/20 shadow-lg" 
+      }`}
+    >
       <div 
-        className="p-6 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+        className="p-6 cursor-pointer select-none hover:bg-white/5 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex gap-5 items-start">
-          <div className="shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center font-black text-lg shadow-xl">
-            Q{idx + 1}
+          {/* Question Number / Icon Box */}
+          <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg shadow-lg ${
+            isDebugging 
+              ? "bg-amber-500 text-black shadow-amber-500/20" 
+              : "bg-[#cbe557] text-neutral-900 shadow-[#cbe557]/20"
+          }`}>
+            {isDebugging ? <Bug size={24} /> : `Q${idx + 1}`}
           </div>
+
           <div className="flex-1">
-            <div className="font-bold text-slate-900 text-xl leading-tight">
+            <div className="font-bold text-white text-xl leading-tight">
               {h.q?.questionText || "Question text missing"}
             </div>
+            
+            {/* Debugging Badge */}
+            {isDebugging && (
+               <span className="inline-flex items-center mt-3 text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-900/30 px-3 py-1 rounded-lg border border-amber-500/30">
+                 <Bug size={12} className="mr-1.5" /> Debugging Task
+               </span>
+            )}
           </div>
-          <div className="text-slate-400 shrink-0">
+
+          <div className="text-neutral-500 shrink-0">
             {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
           </div>
         </div>
@@ -662,20 +691,24 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
 
       {isExpanded && (
         <div className="px-6 pb-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-5 rounded-xl border-2 border-slate-200">
+          
+          {/* User Answer Area - Terminal Style */}
+          <div className="bg-black/40 p-5 rounded-xl border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-[#cbe557]/50"></div>
             <div className="flex items-center gap-2 mb-3">
-              <Code size={16} className="text-slate-600" />
-              <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Your Answer</span>
+              <Code size={16} className="text-[#cbe557]" />
+              <span className="text-xs font-black text-neutral-400 uppercase tracking-wider">Your Answer</span>
             </div>
-            <div className="text-slate-800 font-mono text-sm leading-relaxed whitespace-pre-wrap">
+            <div className="text-neutral-300 font-mono text-sm leading-relaxed whitespace-pre-wrap">
               {String(h.a || "")}
             </div>
           </div>
 
+          {/* Code Replay (if available) */}
           {((h.result as any)?.playback_history?.length > 0 || (h as any).playback_history?.length > 0) && (
             <div className="animate-in fade-in slide-in-from-bottom-2">
-              <div className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                <Video size={14} className="text-indigo-600" /> Code Process Replay
+              <div className="text-xs font-bold text-neutral-500 uppercase mb-2 flex items-center gap-1">
+                <Video size={14} className="text-[#cbe557]" /> Code Process Replay
               </div>
               <CodeReplayPlayer 
                 history={(h.result as any)?.playback_history || (h as any).playback_history} 
@@ -683,23 +716,27 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
             </div>
           )}
 
+          {/* AI Analysis Results */}
           {h.result && (
             <div className="space-y-5">
-              <div className="flex items-center gap-4 flex-wrap p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-4 flex-wrap p-4 bg-white/5 rounded-xl border border-white/10">
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500 font-black uppercase tracking-wider">Score</span>
-                  {renderScoreBadge(h.result.overall_score)}
+                  <span className="text-xs text-neutral-400 font-black uppercase tracking-wider">Score</span>
+                  {/* Ensure renderScoreBadge returns dark-mode compatible classes or wrap it */}
+                  <div className="scale-110 origin-left">
+                    {renderScoreBadge(h.result.overall_score)}
+                  </div>
                 </div>
                 
                 {h.result.verdict && (
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-500 font-black uppercase tracking-wider">Verdict</span>
-                    <span className={`text-sm font-black px-4 py-2 rounded-xl uppercase tracking-wider shadow-sm ${
+                    <span className="text-xs text-neutral-400 font-black uppercase tracking-wider">Verdict</span>
+                    <span className={`text-sm font-black px-4 py-2 rounded-xl uppercase tracking-wider border backdrop-blur-md ${
                       h.result.verdict === "strong" || h.result.verdict === "exceptional" 
-                        ? "bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-800 border border-emerald-200" :
+                        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
                       h.result.verdict === "acceptable" 
-                        ? "bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200" :
-                        "bg-gradient-to-r from-rose-100 to-red-100 text-rose-800 border border-rose-200"
+                        ? "bg-blue-500/20 text-blue-400 border-blue-500/30" :
+                        "bg-rose-500/20 text-rose-400 border-rose-500/30"
                     }`}>
                       {h.result.verdict}
                     </span>
@@ -707,40 +744,43 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
                 )}
               </div>
 
-              {/* 👇 NEW: ADD COMPLEXITY FEEDBACK HERE */}
+              {/* Complexity Feedback (for code questions) */}
               {h.result.complexity_analysis && (
                 <ComplexityFeedback analysis={h.result.complexity_analysis} />
               )}
 
+              {/* Technical Diagnosis */}
               <StructuredFeedback diagnosis={h.result.technical_diagnosis} />
 
-              {/* ... Rest of your component (improvement, rationale, red flags) ... */}
+              {/* Improvement / Feedback Text - Lime Theme */}
               {(!h.result.technical_diagnosis?.win && !h.result.technical_diagnosis?.gap?.issue && h.result.improvement) && (
-                <div className="bg-slate-50 p-5 rounded-xl border-l-4 border-slate-400">
+                <div className="bg-[#cbe557]/5 p-5 rounded-xl border-l-4 border-[#cbe557]">
                   <div className="flex items-start gap-3">
-                    <Lightbulb size={18} className="text-slate-600 mt-0.5" />
+                    <Lightbulb size={18} className="text-[#cbe557] mt-0.5" />
                     <div>
-                      <span className="font-bold text-slate-800 block mb-2">Feedback</span>
-                      <p className="text-slate-700 leading-relaxed">{h.result.improvement}</p>
+                      <span className="font-bold text-white block mb-2">Feedback</span>
+                      <p className="text-neutral-300 leading-relaxed">{h.result.improvement}</p>
                     </div>
                   </div>
                 </div>
               )}
               
+              {/* Rationale */}
               {h.result.rationale && (
-                <div className="text-xs text-slate-500 italic border-t border-slate-100 pt-3 mt-2">
-                  <span className="font-bold not-italic mr-1">Rationale:</span>
+                <div className="text-xs text-neutral-500 italic border-t border-white/10 pt-3 mt-2">
+                  <span className="font-bold text-neutral-400 not-italic mr-1">Rationale:</span>
                   {h.result.rationale}
                 </div>
               )}
 
+              {/* Red Flags */}
               {h.result.red_flags_detected && h.result.red_flags_detected.length > 0 && (
-                <div className="bg-gradient-to-br from-rose-50 to-red-50 p-5 rounded-xl border-2 border-rose-200">
+                <div className="bg-rose-950/30 p-5 rounded-xl border border-rose-500/30">
                   <div className="flex items-start gap-3">
-                    <AlertCircle size={18} className="text-rose-600 mt-0.5" />
+                    <AlertCircle size={18} className="text-rose-500 mt-0.5" />
                     <div>
-                      <span className="font-bold text-rose-800 block mb-2">Red Flags Detected</span>
-                      <p className="text-rose-700">{h.result.red_flags_detected.join(", ")}</p>
+                      <span className="font-bold text-rose-400 block mb-2">Red Flags Detected</span>
+                      <p className="text-rose-300/90 text-sm">{h.result.red_flags_detected.join(", ")}</p>
                     </div>
                   </div>
                 </div>
@@ -752,8 +792,6 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
     </div>
   );
 };
-
-
 export default function InterviewPage() {
   const {
     stage,
@@ -1890,168 +1928,182 @@ const warmupAndStart = async () => {
       -------------------------------------------------------------------------- */
 // REPLACE YOUR handleStart FUNCTION WITH THIS
 const handleStart = useCallback(
-  async (
-   arg1: any = "Technical Interview",
-    difficulty: string = "medium",
-    techStack: string = ""
-  ) => {
-let jobTitle = "Technical Interview";
-      let roleTitle = "Backend Engineer";
-      let companyStyle = "FAANG";
+    async (
+      // Accept either a string (old way) or the Config Object (new way)
+      arg1: string | { role_title: string; company_style: string } = "Technical Interview",
+      difficulty: string = "medium",
+      techStack: string = ""
+    ) => {
+      
+      // 1. Set Defaults
+      let jobTitle = "Technical Interview";
+      let roleTitle = "Backend Engineer"; // Default fallback
+      let companyStyle = "FAANG";         // Default fallback
 
-      // 👇 Check if we received the Config Object from the Modal
-      if (typeof arg1 === 'object' && arg1.role_title) {
+      // 2. 🧠 SMART ARGUMENT PARSING
+      // If arg1 is the object from your Modal:
+      if (typeof arg1 === 'object' && arg1 !== null && 'role_title' in arg1) {
          roleTitle = arg1.role_title;
          companyStyle = arg1.company_style;
-         jobTitle = roleTitle; 
-      } else if (typeof arg1 === 'string') {
+         jobTitle = roleTitle; // Use role as job title
+         console.log("✅ Configuration applied:", { roleTitle, companyStyle });
+      } 
+      // If arg1 is just a string (from Resume Uploader):
+      else if (typeof arg1 === 'string') {
          jobTitle = arg1;
-      }    
-    if (!token) return;
-    if (startAttemptRef.current) {
-      console.warn("Start already in progress");
-      return;
-    }
-    
-    startAttemptRef.current = true;
-    setCameraError(null);
-
-    let capturedImage: string | null = referenceImage;
-    let serverSessionId: string | null = null;
-
-    try {
-      // STEP 1: Ensure image is captured
-      if (!capturedImage || imageStatus !== "captured") {
-        console.log("Capturing reference image...");
-        capturedImage = await captureReferenceImage();
       }
 
-      if (!capturedImage) {
-        throw new Error("Reference image capture failed unexpectedly");
-      }
-
-      // STEP 2: Fullscreen check
-      if (needsFullscreen && !isFullscreen()) {
-        setFullscreenPromptVisible(true);
-        startAttemptRef.current = false;
+      if (!token) return;
+      if (startAttemptRef.current) {
+        console.warn("Start already in progress");
         return;
       }
       
-      setFullscreenPromptVisible(false);
+      startAttemptRef.current = true;
+      setCameraError(null);
 
-      // 🚨 CRITICAL FIX: Use the FULL CONTEXT if available, otherwise fallback to summary
-      // This sends the detailed projects/skills to the AI.
-      const richContext = (resumeParsed as any)?.full_context_for_prompt || resumeParsed?.summary || "";
+      let capturedImage: string | null = referenceImage;
+      let serverSessionId: string | null = null;
 
-      // STEP 3: Call backend
-      const startPayload: any = {
-        jobTitle,
-        difficulty,
-        techStack,
-        resume_summary: richContext, // <--- NOW SENDING DETAILED DATA
-        allow_pii: false,
-        referenceImage: capturedImage,
-        role_title: roleTitle,
-          company_style: companyStyle
-      };
-
-      const startUrl = `${API || ""}/interview/start`;
-console.log("🚀 Starting interview with config:", startPayload);
-      const resp = await fetch(startUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(startPayload),
-      });
-
-      if (resp.status === 200) {
-        const data = await resp.json().catch(() => null);
-        serverSessionId = data?.sessionId || data?.session_id || null;
-
-        if (!serverSessionId) {
-          throw new Error("No session ID returned");
+      try {
+        // STEP 1: Ensure image is captured
+        if (!capturedImage || imageStatus !== "captured") {
+          console.log("Capturing reference image...");
+          capturedImage = await captureReferenceImage();
         }
 
-        console.log("✅ Session created:", serverSessionId);
-        localStorage.setItem("active_interview_session", serverSessionId);
+        if (!capturedImage) {
+          throw new Error("Reference image capture failed unexpectedly");
+        }
 
-if (data?.round_info) {
-  setCurrentRound(data.round_info.current || "screening");
-  setRoundProgress(data.round_info.progress || null);
-}
+        // STEP 2: Fullscreen check
+        if (needsFullscreen && !isFullscreen()) {
+          setFullscreenPromptVisible(true);
+          startAttemptRef.current = false;
+          return;
+        }
+        
+        setFullscreenPromptVisible(false);
 
-if (data?.firstQuestion?.is_probe) {
-  setIsProbeQuestion(true);
-  console.log("🔍 First question is a probe");
-} else {
-  setIsProbeQuestion(false);
-}
-setLastDiagnosis(null);
-        await startInterview?.(
+        // 🚨 CRITICAL FIX: Use the FULL CONTEXT if available
+        const richContext = (resumeParsed as any)?.full_context_for_prompt || resumeParsed?.summary || "";
+
+        // STEP 3: Call backend
+        const startPayload: any = {
           jobTitle,
           difficulty,
           techStack,
-          serverSessionId,
-          data?.firstQuestion
-        );
-        
-        setCameraError(null);
-
-        // Start proctor video
-        try {
-          if (proctorVideoRef.current && !proctorVideoRef.current.srcObject) {
-            const pStream = await navigator.mediaDevices.getUserMedia({
-              video: { width: 640, height: 360, facingMode: "user" },
-              audio: false,
-            });
-            
-            proctorVideoRef.current.srcObject = pStream;
-            proctorVideoRef.current.muted = true;
-            proctorVideoRef.current.playsInline = true;
-            await proctorVideoRef.current.play().catch(() => {});
+          resume_summary: richContext,
+          allow_pii: false,
+          referenceImage: capturedImage,
+          
+          // Send at root level (for legacy support)
+          role_title: roleTitle,
+          company_style: companyStyle,
+          
+          // 👇 CRITICAL FIX: Send inside 'options' for the Python Backend
+          options: {
+              role_title: roleTitle,
+              company_style: companyStyle
           }
-        } catch (e) {
-          console.warn("Proctor video start failed:", e);
-        }
+        };
 
-        setCameraActive(true);
+        const startUrl = `${API || ""}/interview/start`;
+        console.log("🚀 Starting interview payload:", startPayload);
         
-      } else {
-        let body;
-        try {
-          body = await resp.json();
-        } catch (e) {
-          body = { message: `Server error ${resp.status}` };
+        const resp = await fetch(startUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(startPayload),
+        });
+
+        if (resp.status === 200) {
+          const data = await resp.json().catch(() => null);
+          serverSessionId = data?.sessionId || data?.session_id || null;
+
+          if (!serverSessionId) {
+            throw new Error("No session ID returned");
+          }
+
+          console.log("✅ Session created:", serverSessionId);
+          localStorage.setItem("active_interview_session", serverSessionId);
+
+          if (data?.round_info) {
+            setCurrentRound(data.round_info.current || "screening");
+            setRoundProgress(data.round_info.progress || null);
+          }
+
+          if (data?.firstQuestion?.is_probe) {
+            setIsProbeQuestion(true);
+            console.log("🔍 First question is a probe");
+          } else {
+            setIsProbeQuestion(false);
+          }
+          setLastDiagnosis(null);
+          
+          await startInterview?.(
+            jobTitle,
+            difficulty,
+            techStack,
+            serverSessionId,
+            data?.firstQuestion
+          );
+          
+          setCameraError(null);
+
+          // Start proctor video
+          try {
+            if (proctorVideoRef.current && !proctorVideoRef.current.srcObject) {
+              const pStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 360, facingMode: "user" },
+                audio: false,
+              });
+              
+              proctorVideoRef.current.srcObject = pStream;
+              proctorVideoRef.current.muted = true;
+              proctorVideoRef.current.playsInline = true;
+              await proctorVideoRef.current.play().catch(() => {});
+            }
+          } catch (e) {
+            console.warn("Proctor video start failed:", e);
+          }
+
+          setCameraActive(true);
+          
+        } else {
+          let body;
+          try {
+            body = await resp.json();
+          } catch (e) {
+            body = { message: `Server error ${resp.status}` };
+          }
+
+          const errorMessage = body.message || body.error || `Failed to start (status ${resp.status})`;
+          throw new Error(errorMessage);
         }
 
-        const errorMessage = body.message || body.error || `Failed to start (status ${resp.status})`;
-        throw new Error(errorMessage);
+      } catch (e: any) {
+        console.error("❌ Start error:", e);
+        const displayError = e.message || String(e);
+        let suggestion = "";
+        if (displayError.includes("dark")) suggestion = " Try turning on more lights.";
+        else if (displayError.includes("bright")) suggestion = " Try reducing backlight.";
+        else if (displayError.includes("face")) suggestion = " Ensure your face is visible.";
+        
+        setCameraError(displayError + suggestion);
+        setImageStatus("error");
+        stopCamera();
+        
+      } finally {
+        startAttemptRef.current = false;
       }
-
-    } catch (e: any) {
-      console.error("❌ Start error:", e);
-      const displayError = e.message || String(e);
-      let suggestion = "";
-      if (displayError.includes("dark")) suggestion = " Try turning on more lights.";
-      else if (displayError.includes("bright")) suggestion = " Try reducing backlight.";
-      else if (displayError.includes("face")) suggestion = " Ensure your face is visible.";
-      
-      setCameraError(displayError + suggestion);
-      setImageStatus("error");
-      stopCamera();
-      
-    } finally {
-      startAttemptRef.current = false;
-    }
-  },
-  [token, needsFullscreen, isFullscreen, startInterview, captureReferenceImage, 
-   referenceImage, resumeParsed, API, stopCamera, imageStatus]
-);
-
-
-  /* -------------------------
+    },
+    [token, needsFullscreen, isFullscreen, startInterview, captureReferenceImage, 
+     referenceImage, resumeParsed, API, stopCamera, imageStatus]
+  );  /* -------------------------
       Answer submit handler (unchanged)
       ------------------------- */
 
@@ -3285,59 +3337,61 @@ const summaryText = reportData.overall?.feedback_summary || decisionData.feedbac
 
 
 const RoundIndicator = () => {
-    if (stage !== "running") return null;
+  if (stage !== "running") return null;
 
-    // Config for round colors
-    const roundConfig: any = {
-      screening: { label: "Screening", color: "bg-blue-600" },
-      technical: { label: "Technical", color: "bg-purple-600" },
-      behavioral: { label: "Behavioral", color: "bg-emerald-600" },
-      complete: { label: "Complete", color: "bg-slate-600" }
-    };
-
-    const activeConfig = roundConfig[currentRound] || roundConfig.screening;
-
-    return (
-      <div className="mb-6 bg-white rounded-xl shadow-sm border border-slate-200 p-4 animate-in fade-in slide-in-from-top-2">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          
-          {/* Left: Active Round Badge */}
-          <div className="flex items-center gap-3">
-             <div className={`${activeConfig.color} text-white px-4 py-1.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 capitalize`}>
-                {activeConfig.label} Round
-             </div>
-             
-             {isProbeQuestion && (
-                <div className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 animate-pulse">
-                   <HelpCircle size={14} /> Deep Dive
-                </div>
-             )}
-          </div>
-
-          {/* Right: Progress Stats from Backend */}
-          {roundProgress && (
-            <div className="flex items-center gap-2 text-sm">
-               {Object.entries(roundProgress).map(([r, d]: any) => {
-                  const isCurrent = r === currentRound;
-                  const count = d.questions || 0; 
-                  
-                  // Style logic: Dark if current, Green if done, Gray if waiting
-                  let style = "bg-slate-50 text-slate-400 border-slate-100";
-                  if (isCurrent) style = "bg-slate-800 text-white border-slate-800 shadow-md transform scale-105";
-                  else if (d.status === "passed" || d.status === "completed") style = "bg-green-50 text-green-700 border-green-200";
-
-                  return (
-                    <div key={r} className={`px-3 py-1 rounded-lg border transition-all ${style}`}>
-                       <span className="capitalize font-medium">{r}</span>: <span className="font-bold">{count}</span>
-                    </div>
-                  );
-               })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  // Config for round colors (Updated for Dark/Lime Theme)
+  const roundConfig: any = {
+    screening: { label: "Screening", color: "text-blue-400 border-blue-500/30 bg-blue-500/10" },
+    technical: { label: "Technical", color: "text-[#cbe557] border-[#cbe557]/30 bg-[#cbe557]/10" },
+    behavioral: { label: "Behavioral", color: "text-purple-400 border-purple-500/30 bg-purple-500/10" },
+    complete: { label: "Complete", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" }
   };
+
+  const activeConfig = roundConfig[currentRound] || roundConfig.screening;
+
+  return (
+    <div className="mb-8 bg-neutral-900/50 backdrop-blur-md rounded-2xl border border-white/10 p-4 animate-in fade-in slide-in-from-top-2 shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        
+        {/* Left: Active Round Badge */}
+        <div className="flex items-center gap-3">
+           <div className={`px-5 py-2 rounded-xl font-bold text-sm border backdrop-blur-sm flex items-center gap-2 capitalize tracking-wide shadow-[0_0_15px_rgba(0,0,0,0.2)] ${activeConfig.color}`}>
+              {currentRound === 'technical' && <Code size={16}/>}
+              {currentRound === 'screening' && <Target size={16}/>}
+              {activeConfig.label} Round
+           </div>
+           
+           {isProbeQuestion && (
+             <div className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 animate-pulse">
+                <HelpCircle size={14} /> Deep Dive
+             </div>
+           )}
+        </div>
+
+        {/* Right: Progress Stats */}
+        {roundProgress && (
+          <div className="flex items-center gap-2 text-sm">
+             {Object.entries(roundProgress).map(([r, d]: any) => {
+               const isCurrent = r === currentRound;
+               const count = d.questions || 0; 
+               
+               // Style logic: Dark Mode
+               let style = "bg-white/5 text-neutral-500 border-transparent";
+               if (isCurrent) style = "bg-white/10 text-white border-white/20 shadow-lg transform scale-105";
+               else if (d.status === "passed" || d.status === "completed") style = "bg-[#cbe557]/10 text-[#cbe557] border-[#cbe557]/20";
+
+               return (
+                 <div key={r} className={`px-3 py-1.5 rounded-lg border transition-all ${style}`}>
+                    <span className="capitalize font-medium">{r}</span>: <span className="font-bold">{count}</span>
+                 </div>
+               );
+             })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 // Auto-speak final decision reason
 useEffect(() => {
   if (stage === "done" && finalDecision?.reason && autoReadQuestions) {
@@ -3354,8 +3408,14 @@ useEffect(() => {
   }
 }, [stage, finalDecision, autoReadQuestions, speakText]);
   return (
-    <div className="min-h-screen bg-slate-50 py-12">
-      {/* Fixed Camera View (during interview) (unchanged) */}
+<div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white pb-16 relative overflow-hidden">
+  <div className="fixed inset-0 z-0 pointer-events-none">
+    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+    <div className="absolute top-[-5%] right-[10%] w-[400px] h-[400px] bg-[#cbe557]/5 rounded-full blur-[150px]" />
+    <div className="absolute bottom-[10%] left-[5%] w-[350px] h-[350px] bg-indigo-500/5 rounded-full blur-[150px]" />
+  </div>
+
+        {/* Fixed Camera View (during interview) (unchanged) */}
     {stage === "running" && (
   <div 
     className={`fixed top-4 right-4 z-40 w-40 h-30 bg-white rounded-xl shadow-xl border-4 border-white overflow-hidden transform scale-x-[-1] transition-transform duration-300 ${
@@ -3392,7 +3452,7 @@ useEffect(() => {
 )}
 
 
-      <div className="max-w-6xl mx-auto">
+<div className="max-w-6xl mx-auto px-4 sm:px-6">
         {/* Violation banners (unchanged) */}
         {showViolationWarning && !terminatedByViolation && (
           <div className="mb-4 p-4 rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-900 flex items-start gap-3 shadow animate-in fade-in slide-in-from-top-2">
@@ -3576,120 +3636,204 @@ useEffect(() => {
 <RoundTransitionModal />
 <VoiceSettingsModal />
 
-        {/* Header (unchanged) */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-900">
-              <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
-                <Sparkles className="text-white" size={28} />
-              </div>
-              AI Technical Interview
-            </h1>
-            <p className="text-slate-600 mt-1 ml-14">
-              Deep technical assessment powered by AI
-            </p>
-          </div>
+{/* --- HEADER SECTION --- */}
+      <div className="mb-8 relative z-10">
+        {/* Ambient Background Glows */}
+        <div className="absolute top-0 left-10 w-64 h-64 bg-[#cbe557]/10 rounded-full blur-[100px] -z-10"></div>
+        <div className="absolute bottom-0 right-10 w-64 h-64 bg-cyan-500/10 rounded-full blur-[100px] -z-10"></div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-slate-600 font-semibold bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200">
-              {stage === "running" ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                  Live Interview
-                </span>
-              ) : stage === "done" ? (
-                <span className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600" />
-                  Completed
-                </span>
-              ) : (
-                "Ready to Start"
-              )}
+        <div className="backdrop-blur-2xl bg-neutral-900/50 border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] p-6 rounded-2xl relative overflow-hidden group">
+          
+          {/* Shimmer effect on hover */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none"></div>
+
+          <div className="flex items-center justify-between relative z-10">
+            <div className="flex items-center gap-6">
+              <div className="relative">
+                {/* Icon Glow */}
+                <div className="absolute inset-0 bg-[#cbe557] rounded-2xl blur-xl opacity-20 animate-pulse"></div>
+                <div className="relative p-4 bg-white/5 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-md group-hover:border-[#cbe557]/50 transition-colors">
+                  <Sparkles className="text-[#cbe557]" size={36} />
+                </div>
+              </div>
+
+              <div>
+<h1 className="text-3xl md:text-4xl font-black text-white mb-2 tracking-tight">
+                  AI Technical <span className="text-[#cbe557]">Interview</span>
+                </h1>
+<p className="text-neutral-400 text-base font-medium flex items-center gap-2">
+                  <span className="w-2 h-2 bg-[#cbe557] rounded-full animate-pulse shadow-[0_0_10px_#cbe557]"></span>
+                  Advanced technical assessment
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="relative group/status">
+                <div className="absolute inset-0 bg-[#cbe557]/20 rounded-2xl blur-lg opacity-0 group-hover/status:opacity-100 transition-opacity"></div>
+                <div className="relative bg-neutral-800/50 backdrop-blur-md px-8 py-4 rounded-2xl border border-white/10 shadow-lg group-hover/status:border-[#cbe557]/30 transition-all">
+                  {stage === "running" ? (
+                    <span className="flex items-center gap-3">
+                      <span className="relative flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#cbe557] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-[#cbe557] shadow-[0_0_10px_#cbe557]"></span>
+                      </span>
+                      <span className="font-bold text-lg text-white tracking-wide">
+                        Live Session
+                      </span>
+                    </span>
+                  ) : stage === "done" ? (
+                    <span className="flex items-center gap-3 text-neutral-200 font-bold">
+                      <CheckCircle size={20} className="text-[#cbe557]" />
+                      Completed
+                    </span>
+                  ) : (
+                    <span className="text-neutral-400 font-bold">Ready to Start</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Performance Metrics Banner (during interview) (unchanged) */}
-        {stage === "running" && performanceMetrics && (
-          <div className="mb-6 bg-white rounded-xl shadow-md border border-slate-200 p-5 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <Target size={20} className="text-indigo-600" />
-                <span className="font-bold text-slate-800">
+      {/* --- PERFORMANCE METRICS DASHBOARD --- */}
+      {stage === "running" && performanceMetrics && (
+        <div className="mb-6 relative group/metrics z-10">
+          
+<div className="relative backdrop-blur-xl bg-neutral-900/60 border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] rounded-2xl p-5 hover:bg-neutral-900/80 hover:border-white/20 transition-all duration-500">
+            <div className="flex items-center justify-between flex-wrap gap-6">
+              
+              {/* Dashboard Title */}
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#cbe557] to-cyan-400 rounded-xl blur-md opacity-40"></div>
+                  <div className="relative p-3 bg-neutral-800 rounded-xl border border-white/10 shadow-xl">
+                    <Target size={24} className="text-white" />
+                  </div>
+                </div>
+                <span className="font-bold text-xl text-white tracking-wide">
                   Performance Metrics
                 </span>
               </div>
 
-              <div className="flex items-center gap-6 flex-wrap">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-slate-900">
-                    {performanceMetrics.question_count}
+              <div className="flex items-center gap-10 flex-wrap">
+                
+                {/* Questions Count */}
+                <div className="group/stat text-center transform hover:scale-105 transition-all duration-300 cursor-default">
+                  <div className="relative mb-2">
+<div className="relative text-2xl md:text-3xl font-black text-white group-hover/stat:text-[#cbe557] transition-colors">
+                      {performanceMetrics.question_count}
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">
+                  <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold group-hover/stat:text-[#cbe557] transition-colors">
                     Questions
                   </div>
                 </div>
 
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-indigo-600">
-                    {Math.round(performanceMetrics.average_score * 100)}%
+                {/* Average Score with Acid Lime Ring */}
+                <div className="group/stat relative text-center transform hover:scale-105 transition-all duration-300 cursor-default">
+                  <div className="absolute inset-0 bg-[#cbe557]/10 rounded-full blur-xl opacity-0 group-hover/stat:opacity-100 transition-opacity"></div>
+                  <div className="relative">
+                    {/* Circular progress ring */}
+                    <svg className="absolute -inset-2 w-20 h-20 -rotate-90">
+                      <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="4" fill="none" className="text-neutral-800" />
+                      <circle 
+                        cx="40" 
+                        cy="40" 
+                        r="36" 
+                        stroke="url(#limeGradient)" 
+                        strokeWidth="4" 
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 36}`}
+                        strokeDashoffset={`${2 * Math.PI * 36 * (1 - performanceMetrics.average_score)}`}
+                        className="transition-all duration-1000 drop-shadow-[0_0_4px_rgba(203,229,87,0.5)]"
+                      />
+                      <defs>
+                        <linearGradient id="limeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#cbe557" />
+                          <stop offset="100%" stopColor="#ffffff" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                    <div className="relative text-4xl font-black text-white mb-2">
+                      {Math.round(performanceMetrics.average_score * 100)}<span className="text-lg text-neutral-500">%</span>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">
+                  <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold">
                     Average
                   </div>
                 </div>
 
+                {/* Last Score */}
                 {performanceMetrics.last_score !== null && (
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-slate-900">
-                      {Math.round(performanceMetrics.last_score * 100)}%
+                  <div className="text-center transform hover:scale-105 transition-all duration-300 cursor-default">
+                    <div className="text-4xl font-black text-neutral-200 mb-2">
+                      {Math.round(performanceMetrics.last_score * 100)}<span className="text-lg text-neutral-500">%</span>
                     </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide">
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold">
                       Last Score
                     </div>
                   </div>
                 )}
 
-                <div className="flex items-center gap-2">
-                  {renderTrendIcon(performanceMetrics.trend)}
-                  <div className="text-center">
-                    <div className="text-sm font-bold text-slate-900 capitalize">
-                      {performanceMetrics.trend.replace("_", " ")}
+                {/* Trend with Solid Lime Accent */}
+                <div className="relative group/trend">
+                  <div className="absolute inset-0 bg-[#cbe557]/20 rounded-2xl blur-md opacity-0 group-hover/trend:opacity-100 transition-opacity"></div>
+                  <div className="relative flex items-center gap-4 px-6 py-4 bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 hover:border-[#cbe557]/50 transition-all">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#cbe557] shadow-[0_0_15px_rgba(203,229,87,0.4)] transform group-hover/trend:rotate-12 transition-all duration-300">
+                      {/* Using the text-black here for contrast against the Acid Lime */}
+                      {renderTrendIcon(performanceMetrics.trend)}
                     </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide">
-                      Trend
+                    <div className="text-center">
+                      <div className="text-sm font-black text-white capitalize">
+                        {performanceMetrics.trend.replace("_", " ")}
+                      </div>
+                      <div className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold">
+                        Trend
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {(performanceMetrics.consecutive_wins > 0 ||
-                  performanceMetrics.consecutive_fails > 0) && (
-                  <div className="text-center">
-                    <div
-                      className={`text-xl font-bold ${
-                        performanceMetrics.consecutive_wins > 0
-                          ? "text-green-600"
-                          : "text-rose-600"
-                      }`}
-                    >
-                      {performanceMetrics.consecutive_wins > 0 ? (
-                        <>🔥 {performanceMetrics.consecutive_wins}</>
-                      ) : (
-                        <>⚠️ {performanceMetrics.consecutive_fails}</>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide">
-                      {performanceMetrics.consecutive_wins > 0
-                        ? "Win Streak"
-                        : "Need Improvement"}
+                {/* Streak Indicator */}
+                {(performanceMetrics.consecutive_wins > 0 || performanceMetrics.consecutive_fails > 0) && (
+                  <div className={`relative group/streak overflow-hidden ${
+                    performanceMetrics.consecutive_wins > 0 
+                      ? 'bg-gradient-to-br from-[#cbe557]/10 to-transparent border-[#cbe557]/20' 
+                      : 'bg-gradient-to-br from-red-500/10 to-transparent border-red-500/20'
+                  } px-6 py-4 rounded-2xl border backdrop-blur-sm transform hover:scale-105 transition-all duration-300 cursor-default`}>
+                    
+                    <div className="relative text-center">
+                      <div className={`text-3xl font-black mb-1 drop-shadow-lg ${
+                        performanceMetrics.consecutive_wins > 0 ? 'text-[#cbe557]' : 'text-red-400'
+                      }`}>
+                        {performanceMetrics.consecutive_wins > 0 ? (
+                          <span className="inline-flex items-center gap-2">
+                            🔥 {performanceMetrics.consecutive_wins}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2">
+                            ⚠️ {performanceMetrics.consecutive_fails}
+                          </span>
+                        )}
+                      </div>
+                      <div className={`text-[10px] uppercase tracking-widest font-bold ${
+                         performanceMetrics.consecutive_wins > 0 ? 'text-[#cbe557]/80' : 'text-red-400/80'
+                      }`}>
+                        {performanceMetrics.consecutive_wins > 0 ? 'Win Streak' : 'Needs Focus'}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             </div>
           </div>
-        )}
-        <RoundIndicator />
+        </div>
+      )}
+
+                      <RoundIndicator />
 
 
         {/* Not Logged In Warning (unchanged) */}
@@ -3835,625 +3979,754 @@ useEffect(() => {
 
         {/* ACTIVE INTERVIEW (unchanged) */}
 {stage === "running" && currentQuestion && !terminatedByViolation && (
-  <div className="space-y-6 max-w-5xl mx-auto">
-{lastFeedback && (
-  <div className="p-6 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-l-4 border-amber-500 rounded-r-2xl shadow-lg animate-in fade-in slide-in-from-top-4 duration-500 relative group">
-    <div className="flex items-start gap-4">
-      <div className="p-3 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shrink-0 shadow-md">
-        <Lightbulb size={24} className="text-white" />
-      </div>
-      <div className="flex-1">
-        <div className="flex justify-between items-start mb-2">
-          <h4 className="text-sm font-black text-amber-900 uppercase tracking-wider flex items-center gap-2">
-            💡 AI Mentor Feedback
-          </h4>
-          
-          {/* 👇 NEW: Audio Control Button for Feedback */}
-          <button
-            onClick={() => {
-              if (isSpeaking) {
-                // If speaking, toggle pause/resume
-                if (isPaused) resumeSpeaking();
-                else pauseSpeaking();
-              } else {
-                // If not speaking, read this feedback immediately (Priority: True)
-                speakText(lastFeedback, true);
-              }
-            }}
-            className="p-2 bg-white/50 hover:bg-white rounded-full text-amber-700 transition-all shadow-sm border border-amber-200"
-            title="Read Feedback"
-          >
-            {isSpeaking ? (
-              isPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />
-            ) : (
-              <Volume2 size={16} />
-            )}
-          </button>
-        </div>
-        
-        <p className="text-amber-900 text-base leading-relaxed font-medium">
-          {lastFeedback}
-        </p>
-        {lastDiagnosis && (
-          <div className="mt-4 pt-4 border-t border-amber-200/60">
-             <StructuredFeedback diagnosis={lastDiagnosis} />
+  <div className="space-y-6 max-w-5xl mx-auto text-white">
+    {/* ==================== AI MENTOR FEEDBACK CARD ==================== */}
+    {lastFeedback && (
+      <div className="relative p-8 bg-neutral-900/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-[#cbe557]/20 animate-in fade-in slide-in-from-top-4 duration-500 overflow-hidden group hover:shadow-[#cbe557]/10 transition-shadow">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#cbe557]/10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-1000"></div>
+
+        <div className="relative z-10 flex items-start gap-5">
+          <div className="shrink-0 p-4 bg-[#cbe557]/10 rounded-2xl shadow-inner border border-[#cbe557]/20 transform group-hover:rotate-12 transition-transform duration-300">
+            <Lightbulb size={28} className="text-[#cbe557]" />
           </div>
-       )}
-      </div>
-    </div>
-  </div>
-)}
 
-    <div className="bg-white rounded-2xl shadow-2xl border-2 border-slate-200 overflow-hidden">
-<div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 border-b-2 border-slate-200">
-  <div className="flex justify-between items-start mb-3">
-{/* Find this section in your code */}
-<span className="text-xs font-black tracking-widest text-indigo-600 uppercase bg-indigo-100 px-3 py-1.5 rounded-lg border-2 border-indigo-200">
-  {/* OLD CODE: Question {currentQuestion?.questionNumber || history.length + 1} */}
-  
-  {/* NEW FIX: Filter history to ensure we don't count the current question ID if it exists in history */}
-  Question {
-    currentQuestion?.questionNumber || 
-    (history.filter(h => h.q?.questionId !== currentQuestion?.questionId).length + 1)
-  }
-</span>
+          <div className="flex-1">
+            <div className="flex justify-between items-start mb-4">
+              <h4 className="text-sm font-black text-[#cbe557] uppercase tracking-wider flex items-center gap-2 bg-[#cbe557]/5 px-3 py-1 rounded-lg border border-[#cbe557]/20">
+                💡 AI Mentor Feedback
+              </h4>
 
- 
-    <div className="flex items-center gap-2 flex-wrap">
-      {/* TTS Controls */}
-      <div className="flex items-center gap-1 bg-white rounded-full p-1 shadow-sm border border-slate-200">
-        <button
-          onClick={toggleSpeak}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-            isSpeaking
-              ? isPaused
-                ? "bg-amber-100 text-amber-700"
-                : "bg-rose-100 text-rose-700 animate-pulse"
-              : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-          }`}
-          title={isSpeaking ? (isPaused ? "Resume" : "Pause") : "Read Question"}
-        >
-          {isSpeaking ? (
-            isPaused ? (
-              <>
-                <Play size={14} fill="currentColor" />
-                Resume
-              </>
-            ) : (
-              <>
-                <Pause size={14} />
-                Pause
-              </>
-            )
-          ) : (
-            <>
-              <Volume2 size={14} />
-              Read
-            </>
-          )}
-        </button>
-
-        {isSpeaking && (
-          <>
-            <button
-              onClick={stopSpeaking}
-              className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
-              title="Stop"
-            >
-              <Square size={14} className="text-slate-600" />
-            </button>
-
-            <div className="flex items-center gap-1 px-2 border-l border-slate-200">
-              <span className="text-[10px] text-slate-500 font-bold">
-                {speechRate.toFixed(1)}x
-              </span>
+              <button
+                onClick={() => {
+                  if (isSpeaking) {
+                    if (isPaused) resumeSpeaking();
+                    else pauseSpeaking();
+                  } else {
+                    speakText(lastFeedback, true);
+                  }
+                }}
+                className="p-3 bg-white/5 hover:bg-[#cbe557] rounded-xl text-[#cbe557] hover:text-black transition-all shadow-md hover:shadow-lg border border-white/10 hover:border-[#cbe557] transform hover:scale-110 active:scale-95"
+                title="Read Feedback"
+              >
+                {isSpeaking ? (
+                  isPaused ? <Play size={18} fill="currentColor" /> : <Pause size={18} fill="currentColor" />
+                ) : (
+                  <Volume2 size={18} />
+                )}
+              </button>
             </div>
-          </>
-        )}
 
-        <button
-          onClick={() => setShowVoiceSettings(true)}
-          className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
-          title="Voice Settings"
-        >
-          <Settings size={14} className="text-slate-600" />
-        </button>
+            <p className="text-neutral-200 text-lg leading-relaxed font-medium">
+              {lastFeedback}
+            </p>
+
+            {lastDiagnosis && (
+              <div className="mt-6 pt-6 border-t border-white/10">
+                <StructuredFeedback diagnosis={lastDiagnosis} />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-
-      {/* Existing Hint Button */}
-      <button
-        onClick={handleGetHint}
-        disabled={loadingHint || !!hint}
-        className={`flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full border transition-colors ${
-          hint
-            ? "bg-amber-100 text-amber-800 border-amber-200 cursor-default"
-            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
-        }`}
-      >
-        {loadingHint ? (
-          <Loader2 size={12} className="animate-spin" />
-        ) : (
-          <Lightbulb size={12} />
-        )}
-        {hint ? "Hint Active (-15%)" : "Get Hint"}
-      </button>
-    </div>
-  </div>
-
-  {/* Rest of the header content remains the same */}
-  <div className="flex items-center gap-2 mb-2">
-    {currentQuestion.difficulty && (
-      <span
-        className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
-          currentQuestion.difficulty === "expert" ||
-          currentQuestion.difficulty === "hard"
-            ? "bg-rose-100 text-rose-700 border-2 border-rose-200"
-            : "bg-amber-100 text-amber-700 border-2 border-amber-200"
-        }`}
-      >
-        {currentQuestion.difficulty.toUpperCase()}
-      </span>
     )}
-  </div>
 
-  {/* Hint Display */}
-  {hint && (
-    <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r text-sm text-yellow-900 animate-in fade-in slide-in-from-top-2">
-      <strong className="block mb-1 font-bold flex items-center gap-2">
-        <Lightbulb size={16} /> Hint:
-      </strong>
-      {hint}
-    </div>
-  )}
+    {/* ==================== MAIN QUESTION CARD ==================== */}
+    <div className="bg-neutral-900/40 rounded-3xl shadow-2xl border border-white/10 overflow-hidden backdrop-blur-xl relative">
+      {/* Animated gradient background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#cbe557]/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
-  {isProbeQuestion && (
-    <div className="mt-3 p-3 bg-amber-50 border-l-4 border-amber-400 rounded text-sm">
-      <div className="flex items-center gap-2 text-amber-800 font-bold mb-1">
-        <HelpCircle size={16} />
-        <span>Follow-up Question</span>
-      </div>
-      <p className="text-amber-700 text-xs">
-        This is a clarifying question based on your previous answer.
-        Take your time to provide more detail.
-      </p>
-    </div>
-  )}
+<div className="p-5 md:p-6 border-b border-white/5 backdrop-blur-xl relative overflow-hidden">
+        {/* Enhanced decorative orbs with animation */}
+        <div className="absolute top-0 right-0 w-72 h-72 bg-[#cbe557]/5 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-56 h-56 bg-purple-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
 
-  <h2 className="text-2xl font-bold text-slate-900 leading-snug">
-    {currentQuestion.questionText}
-  </h2>
-
-  <div className="mt-4 flex flex-wrap gap-2">
-    {currentQuestion.target_project && (
-      <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
-        🎯 {currentQuestion.target_project}
-      </span>
-    )}
-    {currentQuestion.technology_focus && (
-      <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-lg border border-purple-200 font-medium">
-        ⚡ {currentQuestion.technology_focus}
-      </span>
-    )}
-    {currentQuestion.expectedAnswerType === "code" && (
-      <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-lg border border-green-200 font-medium">
-        💻 Code Expected
-      </span>
-    )}
-  </div>
-</div>
-
-              <div className="bg-slate-50 p-8 border-t border-slate-200">
-<form onSubmit={handleSubmitAnswer}>
-  {currentQuestion.expectedAnswerType === "code" ? (
-  <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-white shadow-sm">
-    
-    {/* --- EDITOR HEADER & TOOLBAR --- */}
-    <div className="bg-slate-100 p-3 flex justify-between items-center border-b border-slate-300">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-bold text-slate-600 uppercase bg-slate-200 px-2 py-1 rounded">
-{(resolvedChallengeForEditor.language || "PYTHON").toUpperCase()}
-
-        </span>
-        {resolvedChallengeForEditor.language === "cpp" && (
-  <span className="text-xs text-amber-600">
-    C++: Write a complete program with <code>main()</code> that reads stdin and prints output
-  </span>
-)}
-
-{resolvedChallengeForEditor.language === "python" && (
-  <span className="text-xs text-slate-500">
-    Python: You may define <code>solve()</code> or read from stdin
-  </span>
-)}
-        <span className="text-xs text-slate-500">
-          Write your solution below
-        </span>
-      </div>
-      
-      <button 
-        type="button"
-        onClick={handleRunCode}
-        disabled={codeStatus === "running" || !answer.trim()}
-        className={`px-4 py-2 text-sm font-bold rounded-lg flex items-center gap-2 transition-all ${
-          codeStatus === "running" 
-            ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-            : "bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md"
-        }`}
-      >
-        {codeStatus === "running" ? (
-          <Loader2 className="animate-spin" size={16} />
-        ) : (
-          <Play size={16} fill="currentColor" />
-        )}
-        Run Code
-      </button>
-    </div>
-
-    {/* --- MONACO EDITOR --- */}
-    <div className="h-[400px] w-full relative">
-<Editor
-key={resolvedChallengeForEditor.language || "python"}
-  height="100%"
-  defaultLanguage={(resolvedChallengeForEditor.language || "python").toLowerCase()}
-  value={answer}                          // <- controlled
-  // defaultValue removed
-  onChange={(val) => setAnswer(val || "")}
-  onMount={handleEditorDidMount}
-  theme="vs-dark"
-  options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false, automaticLayout: true }}
-/>
-
-    </div>
-
-    {/* --- CONSOLE OUTPUT TERMINAL --- */}
-    <div className="bg-slate-900 text-slate-300 p-4 font-mono text-sm border-t-4 border-slate-700">
-      
-      {/* TEST CASE REQUIREMENTS DISPLAY */}
-      <div className="mb-3 p-2 bg-slate-800 rounded border border-slate-700 flex flex-wrap gap-4 text-xs">
-        <div>
-          <span className="text-slate-500 font-bold uppercase mr-2">Input:</span>
-          <code className="text-indigo-300">
-{resolvedChallengeForEditor.test_case_input ?? resolvedChallengeForEditor.test_case ?? "[]"}
-          </code>
-        </div>
-        <div>
-          <span className="text-slate-500 font-bold uppercase mr-2">Target Output:</span>
-          <code className="text-emerald-300">
-{resolvedChallengeForEditor.expected_output ?? resolvedChallengeForEditor.expected ?? ""}
-          </code>
-        </div>
-      </div>
-
-      <div className="flex justify-between items-center mb-2">
-        <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Console Output
-        </div>
-        
-        {/* SUCCESS BADGE */}
-        {codeStatus === "success" && allTestsPassed && (
-  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 bg-emerald-400/10 px-2 py-1 rounded">
-    <CheckCircle size={12} /> All Tests Passed
-  </span>
-)}
-
-{codeStatus === "error" && executionResult && !allTestsPassed && (
-  <span className="text-xs font-bold text-rose-400 flex items-center gap-1 bg-rose-400/10 px-2 py-1 rounded">
-    <XCircle size={12} /> Some Tests Failed
-  </span>
-)}
-
-
-      </div>
-
-      <div className="bg-black/50 p-3 rounded-lg min-h-[80px] max-h-[200px] overflow-y-auto">
-        {codeStatus === "idle" && !codeOutput && (
-          <span className="text-slate-600 italic">Click "Run Code" to see output...</span>
-        )}
-        {codeStatus === "running" && (
-          <span className="text-yellow-400 animate-pulse">Running code container...</span>
-        )}
-        
-        {/* OUTPUT DISPLAY */}
-        {codeOutput && (
-          <pre className={`whitespace-pre-wrap break-words font-mono text-xs md:text-sm ${
-             codeStatus === "error" && !allTestsPassed ? "text-rose-400" : "text-green-400"
-          }`}>
-            {codeOutput}
-          </pre>
-        )}
-
-        {/* DEBUG INFO (Expected vs Actual) */}
-        {executionResult?.debug && (
-           <div className="mt-3 pt-2 border-t border-slate-800 text-xs">
-              <div className="text-slate-500 font-bold mb-1">Mismatch Details:</div>
-              <pre className="text-amber-300/90 whitespace-pre-wrap">{executionResult.debug}</pre>
-           </div>
-        )}
-      </div>
-    </div>
-  </div>
-) :currentQuestion.expectedAnswerType === "system_design" ? (
-  /* ============ SYSTEM DESIGN WHITEBOARD - WORKING VERSION ============ */
-  <div className="flex flex-col border-2 border-slate-300 rounded-xl overflow-hidden bg-white shadow-sm">
-    
-    {/* Header */}
-    <div className="bg-slate-100 p-3 flex justify-between items-center border-b border-slate-300 shrink-0">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-bold text-slate-600 uppercase bg-indigo-100 text-indigo-700 px-2 py-1 rounded flex items-center gap-1">
-          <LayoutTemplate size={14} /> System Design
-        </span>
-        <span className="text-xs text-slate-500">
-          Draw your architecture using the left toolbar ⬅️
-        </span>
-      </div>
-      
-      {/* Clear and Center buttons */}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (excalidrawAPI) {
-              excalidrawAPI.scrollToContent();
-              excalidrawAPI.updateScene({
-                appState: { zoom: { value: 1 } }
-              });
-              console.log("🎯 Canvas centered");
-            }
-          }}
-          className="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 font-medium"
-        >
-          🎯 Center
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (excalidrawAPI) {
-              excalidrawAPI.resetScene();
-              whiteboardElementsRef.current = [];
-              console.log("Canvas cleared");
-            }
-          }}
-          className="text-xs px-3 py-1 bg-rose-100 text-rose-700 rounded hover:bg-rose-200 font-medium"
-        >
-          🗑️ Clear
-        </button>
-      </div>
-    </div>
-
-    {/* ✅ WORKING CANVAS - Critical fixes applied */}
-    <div
-      style={{
-        width: "100%",
-        height: "500px",
-        position: "relative",
-        isolation: "isolate",
-      }}
-    >
-      <ExcalidrawWrapper
-        onChange={handleExcalidrawChange}
-        excalidrawAPI={handleExcalidrawAPI}
-        viewModeEnabled={false}         // ✅ Prevents lock icon
-        zenModeEnabled={false}           // ✅ Shows toolbar
-        gridModeEnabled={true}           // ✅ Visual feedback
-        initialData={{
-          appState: {
-            viewBackgroundColor: "#ffffff",
-            currentItemStrokeColor: "#1e88e5",
-            currentItemBackgroundColor: "#e3f2fd",
-            currentItemStrokeWidth: 2,
-            zoom: { value: 1 },
-            scrollX: 0,
-            scrollY: 0,
-          },
-          elements: [],
-        }}
-      />
-    </div>
-
-    {/* Text Explanation Area */}
-    <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0">
-      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
-        Verbal Explanation (Describe your architecture)
-      </label>
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        rows={3}
-        placeholder="Explain your system design: components, data flow, scalability, databases..."
-        className="w-full p-3 text-sm bg-white text-slate-800 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
-      />
-    </div>
-  </div>
-
-     
-  ) : (
-/* --- HYBRID TEXT/VOICE INPUT (Only for non-technical questions) --- */
-  <div className="relative group animate-in fade-in slide-in-from-bottom-2">
-    
-    {/* Header Status Bar */}
-    <div className="flex justify-between items-center mb-2 px-1">
-      <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
-        <Edit3 size={14} /> Your Answer
-      </label>
-      <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-2 transition-all ${
-        isListening ? "bg-indigo-100 text-indigo-700 border border-indigo-200" : "bg-slate-100 text-slate-500"
-      }`}>
-        {isListening ? (
-          <>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-            </span>
-Voice Active
-          </>
-        ) : (
-          "Type or Dictate"
-        )}
-      </div>
-    </div>
-
-    {/* Input Area Container */}
-    <div className={`relative rounded-xl border-2 transition-all bg-white overflow-hidden ${
-      isListening 
-        ? "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.15)]" 
-        : "border-slate-300 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10"
-    }`}>
-      
-      {/* The Text Area (Always Editable) */}
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        placeholder="Type your answer here... or click the microphone to speak."
-        rows={8}
-        className="w-full p-5 text-base text-slate-800 outline-none resize-none bg-transparent relative z-10 placeholder:text-slate-400"
-      />
-
- {/* Floating Mic Button with Better Feedback */}
-<button
-  type="button"
-  onClick={handleMicToggle}
-  disabled={!isSupported}
-  className={`absolute bottom-4 right-4 p-4 rounded-full shadow-2xl transition-all z-30 flex items-center gap-2 font-bold group ${
-    !isSupported
-      ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-      : isListening 
-        ? "bg-gradient-to-r from-rose-500 to-red-600 text-white hover:from-rose-600 hover:to-red-700 scale-110 ring-4 ring-rose-200" 
-        : "bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 hover:scale-105"
-  }`}
-  title={!isSupported ? "Speech recognition not supported" : isListening ? "Stop Recording (Click or press ESC)" : "Start Voice Input (Click or press Space)"}
->
-  {isListening ? (
-    <>
-      <Square size={20} fill="currentColor" className="animate-pulse" />
-      <span className="text-sm pr-1">Stop</span>
-      <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-    </>
-  ) : (
-    <>
-      <Mic size={22} className="group-hover:scale-110 transition-transform" />
-      <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity">Speak</span>
-    </>
-  )}
-</button>
-
-{/* Live Transcript Overlay - Enhanced */}
-{isListening && transcriptBuffer && (
-  <div className="absolute bottom-20 left-4 right-4 z-20 animate-in slide-in-from-bottom-4">
-    <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md border border-white/10">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse animation-delay-150"></span>
-          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse animation-delay-300"></span>
-        </div>
-        <span className="text-xs font-bold uppercase text-red-400 tracking-wider">
-          Recording
-        </span>
-        <div className="ml-auto text-xs text-slate-400">
-          {transcriptBuffer.split(' ').length} words
-        </div>
-      </div>
-      <p className="text-base font-medium leading-relaxed text-slate-100">
-        {transcriptBuffer}
-        <span className="inline-block w-2 h-5 ml-1 align-middle bg-indigo-400 animate-pulse"/>
-      </p>
-    </div>
-  </div>
-)}
-    </div>
-
-    {/* Character Count Footer */}
-    <div className="mt-2 flex items-center justify-between text-xs text-slate-400 px-1">
-      <span className="flex items-center gap-1">
-        <Keyboard size={12} /> {answer.length} chars
-      </span>
-      <span>
-        {isListening ? "Processing voice..." : "Pro Tip: You can edit text while speaking"}
-      </span>
-    </div>
-  </div>
-)}
-
-{currentQuestion.expectedAnswerType === "code" && (
-  <div className="mt-4 grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2">
-    <div className="bg-white p-3 rounded-xl border-2 border-slate-200">
-      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-        Time Complexity (Big O)
-      </label>
-      <input
-        type="text"
-        placeholder="e.g. O(n log n)"
-        value={timeComplexity}
-        onChange={(e) => setTimeComplexity(e.target.value)}
-        className="w-full text-sm font-mono text-slate-800 outline-none bg-transparent placeholder:text-slate-400"
-      />
-    </div>
-    <div className="bg-white p-3 rounded-xl border-2 border-slate-200">
-      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-        Space Complexity (Big O)
-      </label>
-      <input
-        type="text"
-        placeholder="e.g. O(1)"
-        value={spaceComplexity}
-        onChange={(e) => setSpaceComplexity(e.target.value)}
-        className="w-full text-sm font-mono text-slate-800 outline-none bg-transparent placeholder:text-slate-400"
-      />
-    </div>
-  </div>
-)}
-  <div className="mt-5 flex items-center justify-between">
-    <button
-      type="button"
-      onClick={() => {
-        setAnswer("");
-        setCodeOutput(null);
-        setCodeStatus("idle");
-        setTimeComplexity("");
-      setSpaceComplexity("");
-        setWhiteboardElements([]);
-if (excalidrawAPI) {
-    excalidrawAPI.resetScene();
-}
-      }}
-      className="text-slate-500 text-sm font-medium hover:text-slate-700 transition-colors px-3 py-2 hover:bg-slate-100 rounded-lg"
-    >
-      Clear Answer
-    </button>
-
-    <button
-      type="submit"
-      disabled={loading || !token || !answer.trim()}
-      className={`px-8 py-4 rounded-xl font-bold text-lg shadow-xl transition-all transform active:scale-95 flex items-center gap-3 ${
-        !token || !answer.trim() || loading
-          ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-          : "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-indigo-300 hover:scale-105"
-      }`}
-    >
-      {loading ? (
-        <>
-          <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-          Analyzing Answer...
-        </>
-      ) : (
-        <>
-          Submit Answer
-          <CheckCircle size={20} />
-        </>
-      )}
-    </button>
-  </div>
-</form>
+        <div className="relative z-10">
+          {/* Enhanced top bar */}
+          <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
+            {/* Question Badge */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-[#cbe557]/20 rounded-2xl blur-md opacity-50 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative flex items-center gap-3 bg-black/40 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 shadow-xl">
+                <Sparkles size={16} className="text-[#cbe557] animate-pulse" />
+                <span className="text-xs font-black tracking-widest text-[#cbe557] uppercase">
+                  Question {currentQuestion?.questionNumber || (history.filter(h => h.q?.questionId !== currentQuestion?.questionId).length + 1)}
+                </span>
               </div>
             </div>
+
+            {/* Controls Group */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Modernized TTS Controls */}
+              <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md rounded-2xl p-1.5 shadow-xl border border-white/10">
+                <button
+                  onClick={toggleSpeak}
+                  className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-black transition-all transform hover:scale-105 active:scale-95 ${isSpeaking
+                      ? isPaused
+                        ? "bg-[#cbe557]/20 text-[#cbe557] shadow-md border border-[#cbe557]/30"
+                        : "bg-red-500/20 text-red-400 border border-red-500/30"
+                      : "bg-white/5 text-neutral-300 hover:bg-[#cbe557] hover:text-black hover:shadow-[#cbe557]/20"
+                    }`}
+                  title={isSpeaking ? (isPaused ? "Resume" : "Pause") : "Read Question"}
+                >
+                  {isSpeaking ? (
+                    isPaused ? (
+                      <>
+                        <Play size={16} fill="currentColor" />
+                        <span className="hidden sm:inline">Resume</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pause size={16} />
+                        <span className="hidden sm:inline">Pause</span>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <Volume2 size={16} />
+                      <span className="hidden sm:inline">Read</span>
+                    </>
+                  )}
+                </button>
+
+                {isSpeaking && (
+                  <>
+                    <button
+                      onClick={stopSpeaking}
+                      className="p-2.5 hover:bg-white/10 rounded-xl transition-all transform hover:scale-110 active:scale-95"
+                      title="Stop"
+                    >
+                      <Square size={16} className="text-neutral-400 hover:text-white" />
+                    </button>
+
+                    <div className="flex items-center gap-2 px-3 border-l border-white/10">
+                      <Zap size={14} className="text-[#cbe557]" />
+                      <span className="text-xs text-white font-black">
+                        {speechRate.toFixed(1)}x
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                <button
+                  onClick={() => setShowVoiceSettings(true)}
+                  className="p-2.5 hover:bg-white/10 rounded-xl transition-all transform hover:scale-110 active:scale-95"
+                  title="Voice Settings"
+                >
+                  <Settings size={16} className="text-neutral-400 hover:text-white" />
+                </button>
+              </div>
+
+              {/* Hint Button */}
+              <button
+                onClick={handleGetHint}
+                disabled={loadingHint || !!hint}
+                className={`flex items-center gap-2.5 text-xs font-black px-5 py-2.5 rounded-2xl border transition-all transform hover:scale-105 active:scale-95 shadow-lg ${hint
+                    ? "bg-[#cbe557]/10 text-[#cbe557] border-[#cbe557]/30"
+                    : "bg-black/40 text-neutral-300 border-white/10 hover:border-[#cbe557]/50 hover:text-[#cbe557]"
+                  }`}
+              >
+                {loadingHint ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Lightbulb size={16} className={hint ? "text-[#cbe557] fill-[#cbe557]/20" : ""} />
+                )}
+                <span>{hint ? "Hint Active (-15%)" : "Get Hint"}</span>
+              </button>
+            </div>
           </div>
-        )}
+
+          {/* Difficulty Badge & Timer */}
+          {currentQuestion.difficulty && (
+            <div className="flex items-center gap-3 mb-6 flex-wrap">
+              <div className={`relative inline-flex items-center gap-2.5 text-xs font-black uppercase px-5 py-2.5 rounded-xl shadow-lg border ${currentQuestion.difficulty === "expert" || currentQuestion.difficulty === "hard"
+                  ? "bg-red-500/10 text-red-400 border-red-500/20"
+                  : "bg-[#cbe557]/10 text-[#cbe557] border-[#cbe557]/20"
+                }`}>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-current"></span>
+                </span>
+                {currentQuestion.difficulty.toUpperCase()}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-neutral-400 bg-black/40 backdrop-blur-sm px-4 py-2.5 rounded-xl border border-white/10 shadow-sm">
+                <Timer size={14} className="text-[#cbe557]" />
+                <span className="font-bold text-neutral-300">45 min remaining</span>
+              </div>
+            </div>
+          )}
+
+          {/* Question Text */}
+<h2 className="text-xl md:text-2xl font-black text-white leading-tight mb-4 tracking-tight">
+            {currentQuestion.questionText}
+          </h2>
+
+          {/* Hint Display */}
+          {hint && (
+            <div className="mb-6 p-4 bg-[#cbe557]/5 border-l-4 border-[#cbe557] rounded-r-xl shadow-md">
+              <div className="flex items-start gap-3">
+                <Lightbulb size={20} className="text-[#cbe557] mt-0.5 flex-shrink-0 fill-[#cbe557]/20 animate-pulse" />
+                <div>
+                  <div className="font-black text-[#cbe557] text-sm mb-1 flex items-center gap-2">
+                    💡 Hint <span className="text-xs font-normal text-neutral-400">(-15% score)</span>
+                  </div>
+                  <p className="text-neutral-300 text-sm leading-relaxed">{hint}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Metadata Tags */}
+          <div className="flex flex-wrap gap-3">
+            {currentQuestion.target_project && (
+              <span className="inline-flex items-center gap-2 text-xs bg-blue-500/10 text-blue-400 px-4 py-2.5 rounded-xl border border-blue-500/20 font-black shadow-sm cursor-default">
+                🎯 {currentQuestion.target_project}
+              </span>
+            )}
+            {currentQuestion.technology_focus && (
+              <span className="inline-flex items-center gap-2 text-xs bg-purple-500/10 text-purple-400 px-4 py-2.5 rounded-xl border border-purple-500/20 font-black shadow-sm cursor-default">
+                ⚡ {currentQuestion.technology_focus}
+              </span>
+            )}
+            {currentQuestion.expectedAnswerType === "code" && (
+              <span className={`inline-flex items-center gap-2 text-xs px-4 py-2.5 rounded-xl border font-black shadow-sm cursor-default ${currentQuestion.type === 'debugging'
+                  ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                }`}>
+                {currentQuestion.type === 'debugging' ? (
+                  <>
+                    <Bug size={16} /> Debugging Challenge
+                  </>
+                ) : (
+                  <>
+                    <Code size={16} /> Code Expected
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ==================== ANSWER FORM AREA ==================== */}
+<div className="bg-neutral-950/50 p-4 md:p-6 border-t border-white/10">        <form onSubmit={handleSubmitAnswer}>
+          {currentQuestion.expectedAnswerType === "code" ? (
+            /* ==================== CODE EDITOR - DARK MODE GLASS ==================== */
+            <div className="border border-white/10 rounded-2xl overflow-hidden bg-neutral-900 shadow-xl">
+
+              {/* Editor Header */}
+              <div className="bg-white/5 p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Language Badge */}
+                  <span className="text-xs font-black text-white uppercase bg-white/10 px-3 py-2 rounded-xl shadow-sm border border-white/5">
+                    {(resolvedChallengeForEditor.language || "PYTHON").toUpperCase()}
+                  </span>
+
+                  {/* Language-specific hints */}
+                  {resolvedChallengeForEditor.language === "cpp" && (
+                    <span className="text-xs text-[#cbe557] bg-[#cbe557]/10 px-3 py-1.5 rounded-lg border border-[#cbe557]/20 font-medium flex items-center gap-1.5">
+                      <Code size={12} />
+                      C++: Write complete program with <code className="bg-[#cbe557]/20 px-1 rounded">main()</code>
+                    </span>
+                  )}
+
+                  {resolvedChallengeForEditor.language === "python" && (
+                    <span className="text-xs text-blue-300 bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20 font-medium flex items-center gap-1.5">
+                      <Code size={12} />
+                      Python: Define <code className="bg-blue-500/20 px-1 rounded">solve()</code> or read from stdin
+                    </span>
+                  )}
+
+                  {/* Debugging warning */}
+                  {currentQuestion.type === 'debugging' && (
+                    <span className="text-xs text-red-400 font-black bg-red-500/10 px-4 py-1.5 rounded-lg border border-red-500/20 flex items-center gap-2 animate-pulse">
+                      <Bug size={14} />
+                      ⚠️ BUG DETECTED: Find and fix the error
+                    </span>
+                  )}
+                </div>
+
+                {/* Run Code Button (LIME POP) */}
+                <button
+                  type="button"
+                  onClick={handleRunCode}
+                  disabled={codeStatus === "running" || !answer.trim()}
+                  className={`group/run px-5 py-2.5 text-sm font-black rounded-xl flex items-center gap-2.5 transition-all shadow-lg ${codeStatus === "running"
+                      ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                      : "bg-[#cbe557] text-neutral-950 hover:bg-[#b5cc4e] hover:shadow-[#cbe557]/40 hover:scale-105 active:scale-95"
+                    }`}
+                >
+                  {codeStatus === "running" ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      <span>Running...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={18} fill="currentColor" className="group-hover/run:scale-110 transition-transform" />
+                      <span>Run Code</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Monaco Editor */}
+              <div className="h-[400px] w-full relative bg-[#1e1e1e]">
+                <Editor
+                  key={resolvedChallengeForEditor.language || "python"}
+                  height="100%"
+                  defaultLanguage={(resolvedChallengeForEditor.language || "python").toLowerCase()}
+                  value={answer}
+                  onChange={(val) => setAnswer(val || "")}
+                  onMount={handleEditorDidMount}
+                  theme="vs-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+                    lineNumbers: "on",
+                    renderLineHighlight: "all",
+                    cursorBlinking: "smooth"
+                  }}
+                />
+              </div>
+
+              {/* Console Output Terminal */}
+              <div className="bg-black text-neutral-300 p-5 font-mono text-sm border-t border-[#cbe557]/30">
+
+                {/* Test Case Requirements Display */}
+                <div className="mb-4 p-3 bg-neutral-900 rounded-xl border border-white/10 backdrop-blur-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-neutral-500 font-black uppercase tracking-wider flex items-center gap-2">
+                        <ArrowRight size={12} className="text-[#cbe557]" />
+                        Input:
+                      </span>
+                      <code className="text-[#cbe557] bg-white/5 px-2 py-1 rounded font-medium">
+                        {resolvedChallengeForEditor.test_case_input ?? resolvedChallengeForEditor.test_case ?? "[]"}
+                      </code>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-neutral-500 font-black uppercase tracking-wider flex items-center gap-2">
+                        <CheckCircle size={12} className="text-emerald-400" />
+                        Expected Output:
+                      </span>
+                      <code className="text-emerald-300 bg-white/5 px-2 py-1 rounded font-medium">
+                        {resolvedChallengeForEditor.expected_output ?? resolvedChallengeForEditor.expected ?? ""}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Console Header */}
+                <div className="flex justify-between items-center mb-3">
+                  <div className="text-xs font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2">
+                    <Terminal size={14} className="text-[#cbe557]" />
+                    Console Output
+                  </div>
+
+                  {/* Status Badges */}
+                  {codeStatus === "success" && allTestsPassed && (
+                    <span className="text-xs font-black text-emerald-400 flex items-center gap-2 bg-emerald-400/10 px-3 py-1.5 rounded-lg border border-emerald-400/30 animate-in fade-in">
+                      <CheckCircle size={14} /> All Tests Passed ✓
+                    </span>
+                  )}
+
+                  {codeStatus === "error" && executionResult && !allTestsPassed && (
+                    <span className="text-xs font-black text-red-400 flex items-center gap-2 bg-red-400/10 px-3 py-1.5 rounded-lg border border-red-400/30 animate-in fade-in">
+                      <XCircle size={14} /> Tests Failed ✗
+                    </span>
+                  )}
+                </div>
+
+                {/* Output Display Area */}
+                <div className="bg-neutral-950/80 backdrop-blur-sm p-4 rounded-xl min-h-[100px] max-h-[220px] overflow-y-auto border border-white/10 shadow-inner">
+                  {codeStatus === "idle" && !codeOutput && (
+                    <span className="text-neutral-600 italic flex items-center gap-2">
+                      <Play size={14} />
+                      Click "Run Code" to see output...
+                    </span>
+                  )}
+
+                  {codeStatus === "running" && (
+                    <span className="text-[#cbe557] font-bold flex items-center gap-2 animate-pulse">
+                      <Loader2 className="animate-spin" size={14} />
+                      Executing code in container...
+                    </span>
+                  )}
+
+                  {/* Actual Output */}
+                  {codeOutput && (
+                    <pre className={`whitespace-pre-wrap break-words font-mono text-sm leading-relaxed ${codeStatus === "error" && !allTestsPassed ? "text-red-400" : "text-emerald-400"
+                      }`}>
+                      {codeOutput}
+                    </pre>
+                  )}
+
+                  {/* Debug Information */}
+                  {executionResult?.debug && (
+                    <div className="mt-4 pt-3 border-t border-white/10">
+                      <div className="text-neutral-500 font-black text-xs mb-2 flex items-center gap-2">
+                        <Bug size={12} className="text-[#cbe557]" />
+                        Debug Information:
+                      </div>
+                      <pre className="text-[#cbe557] whitespace-pre-wrap text-xs bg-[#cbe557]/5 p-2 rounded border border-[#cbe557]/10">
+                        {executionResult.debug}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+          ) : currentQuestion.expectedAnswerType === "system_design" ? (
+            /* ==================== SYSTEM DESIGN WHITEBOARD - DARK ==================== */
+            <div className="flex flex-col border border-white/10 rounded-2xl overflow-hidden bg-neutral-900 shadow-xl">
+
+              {/* Enhanced Header */}
+              <div className="bg-white/5 p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-black text-[#cbe557] uppercase bg-[#cbe557]/10 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm border border-[#cbe557]/20">
+                    <LayoutTemplate size={16} /> System Design
+                  </span>
+                  <span className="text-xs text-neutral-400 font-medium flex items-center gap-2">
+                    <Sparkles size={12} className="text-purple-400" />
+                    Draw your architecture below
+                  </span>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (excalidrawAPI) {
+                        excalidrawAPI.scrollToContent();
+                        excalidrawAPI.updateScene({
+                          appState: { zoom: { value: 1 } }
+                        });
+                      }
+                    }}
+                    className="group/center text-xs px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500/20 font-black transition-all hover:scale-105 active:scale-95 shadow-sm border border-blue-500/20 flex items-center gap-2"
+                  >
+                    <Target size={14} className="group-hover/center:rotate-90 transition-transform" />
+                    Center View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (excalidrawAPI) {
+                        excalidrawAPI.resetScene();
+                        whiteboardElementsRef.current = [];
+                      }
+                    }}
+                    className="group/clear text-xs px-4 py-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 font-black transition-all hover:scale-105 active:scale-95 shadow-sm border border-red-500/20 flex items-center gap-2"
+                  >
+                    <Trash2 size={14} className="group-hover/clear:rotate-12 transition-transform" />
+                    Clear Canvas
+                  </button>
+                </div>
+              </div>
+
+              {/* Canvas Area */}
+              <div
+                style={{
+                  width: "100%",
+                  height: "500px",
+                  position: "relative",
+                  isolation: "isolate",
+                }}
+              >
+                <ExcalidrawWrapper
+                  onChange={handleExcalidrawChange}
+                  excalidrawAPI={handleExcalidrawAPI}
+                  viewModeEnabled={false}
+                  zenModeEnabled={false}
+                  gridModeEnabled={true}
+                  initialData={{
+                    appState: {
+                      viewBackgroundColor: "#171717",
+                      currentItemStrokeColor: "#cbe557",
+                      currentItemBackgroundColor: "transparent",
+                      currentItemStrokeWidth: 2,
+                      zoom: { value: 1 },
+                      scrollX: 0,
+                      scrollY: 0,
+                    },
+                    elements: [],
+                  }}
+                />
+              </div>
+
+              {/* Text Explanation Area */}
+              <div className="p-5 bg-neutral-900 border-t border-white/10 shrink-0">
+                <label className="block text-xs font-black text-neutral-400 uppercase mb-3 flex items-center gap-2">
+                  <FileText size={14} className="text-[#cbe557]" />
+                  Architecture Explanation
+                </label>
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  rows={4}
+                  placeholder="Describe your system architecture: components, data flow, scalability strategies, database choices, caching layers, load balancing..."
+                  className="w-full p-4 text-sm bg-neutral-950 text-white rounded-xl border border-white/10 focus:ring-1 focus:ring-[#cbe557] focus:border-[#cbe557] outline-none resize-none shadow-inner placeholder:text-neutral-600 leading-relaxed"
+                />
+                <div className="mt-2 text-xs text-neutral-500 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Keyboard size={12} />
+                    {answer.length} characters
+                  </span>
+                  <span className="italic">💡 Be specific about scalability and trade-offs</span>
+                </div>
+              </div>
+            </div>
+
+          ) : (
+            /* ==================== TEXT/VOICE INPUT - DARK ==================== */
+            <div className="relative group">
+
+              {/* Header Status Bar */}
+              <div className="flex justify-between items-center mb-3 px-1">
+                <label className="text-xs font-black text-neutral-400 uppercase flex items-center gap-2">
+                  <Edit3 size={14} className="text-[#cbe557]" />
+                  Your Answer
+                </label>
+
+                <div className={`text-xs font-black px-3 py-1.5 rounded-full flex items-center gap-2 transition-all h-8 ${isListening
+                    ? "bg-[#cbe557]/10 border border-[#cbe557]/30 shadow-[0_0_15px_-3px_rgba(203,229,87,0.3)]"
+                    : "bg-white/5 text-neutral-500 border border-white/5"
+                  }`}>
+                  {isListening ? (
+                    <>
+                      {/* Render Visualizer here */}
+                      <AudioVisualizer isListening={isListening} />
+                      <span className="text-[#cbe557] animate-pulse ml-1">Live</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic size={12} />
+                      Type or Dictate
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Input Container */}
+              <div className={`relative rounded-2xl border transition-all bg-neutral-900/50 overflow-hidden shadow-lg ${isListening
+                  ? "border-[#cbe557] shadow-[0_0_40px_rgba(203,229,87,0.1)] ring-1 ring-[#cbe557]/20"
+                  : "border-white/10 hover:border-white/20 focus-within:border-[#cbe557] focus-within:ring-1 focus-within:ring-[#cbe557]/20"
+                }`}>
+
+                {/* Textarea */}
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  placeholder="Type your answer here... or click the microphone to speak."
+                  rows={8}
+                  className="w-full p-6 text-base text-white outline-none resize-none bg-transparent relative z-10 placeholder:text-neutral-600 leading-relaxed"
+                />
+
+                {/* Floating Mic Button (LIME POP) */}
+                <button
+                  type="button"
+                  onClick={handleMicToggle}
+                  disabled={!isSupported}
+                  className={`absolute bottom-5 right-5 p-4 rounded-2xl shadow-2xl transition-all z-30 flex items-center gap-2.5 font-black group/mic ${!isSupported
+                      ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                      : isListening
+                        ? "bg-red-500 text-white hover:bg-red-600 scale-110 ring-4 ring-red-500/30 animate-pulse"
+                        : "bg-[#cbe557] text-black hover:bg-[#b5cc4e] hover:scale-105 hover:shadow-[0_0_20px_rgba(203,229,87,0.4)]"
+                    }`}
+                >
+                  {isListening ? (
+                    <>
+                      <Square size={22} fill="currentColor" />
+                      <span className="text-sm">Stop</span>
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-400 rounded-full animate-ping"></span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic size={24} className="group-hover/mic:scale-110 group-hover/mic:rotate-12 transition-transform" />
+                      <span className="text-sm opacity-0 group-hover/mic:opacity-100 transition-opacity whitespace-nowrap">
+                        Speak
+                      </span>
+                    </>
+                  )}
+                </button>
+
+                {/* Live Transcript Overlay */}
+                {isListening && transcriptBuffer && (
+                  <div className="absolute bottom-28 left-5 right-5 z-20 animate-in slide-in-from-bottom-4">
+                    <div className="bg-neutral-900/90 text-white p-5 rounded-2xl shadow-2xl backdrop-blur-md border border-white/20">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="flex items-center gap-1.5">
+                          {[...Array(3)].map((_, i) => (
+                            <span
+                              key={i}
+                              className="w-2 h-2 bg-red-500 rounded-full animate-pulse"
+                              style={{ animationDelay: `${i * 0.15}s` }}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-xs font-black uppercase text-red-400 tracking-widest">
+                          🔴 Recording
+                        </span>
+                        <div className="ml-auto flex items-center gap-2 text-xs text-neutral-400">
+                          <Zap size={12} className="text-[#cbe557]" />
+                          <span className="font-bold text-[#cbe557]">
+                            {transcriptBuffer.split(' ').filter(w => w).length}
+                          </span>
+                          words
+                        </div>
+                      </div>
+                      <p className="text-base font-medium leading-relaxed text-neutral-200">
+                        {transcriptBuffer}
+                        <span className="inline-block w-0.5 h-5 ml-1.5 align-middle bg-[#cbe557] animate-pulse" />
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Stats */}
+              <div className="mt-3 flex items-center justify-between text-xs px-1">
+                <span className="flex items-center gap-2 text-neutral-500 font-medium">
+                  <Keyboard size={13} />
+                  <span className="font-black text-neutral-300">{answer.length}</span>
+                  <span className="text-neutral-600">characters</span>
+                </span>
+                <span className="text-neutral-500 italic flex items-center gap-1.5">
+                  {isListening ? (
+                    <>
+                      <Mic size={12} className="text-[#cbe557] animate-pulse" />
+                      Processing voice input...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={12} className="text-[#cbe557]" />
+                      You can edit text while speaking
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== COMPLEXITY INPUTS (Code Questions) ==================== */}
+          {currentQuestion.expectedAnswerType === "code" && (
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="group/complexity bg-white/5 p-5 rounded-2xl border border-white/10 hover:border-[#cbe557]/50 transition-all shadow-sm">
+                <label className="block text-xs font-black text-neutral-400 uppercase mb-3 flex items-center gap-2">
+                  <Zap size={14} className="text-[#cbe557]" />
+                  Time Complexity
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. O(n log n)"
+                  value={timeComplexity}
+                  onChange={(e) => setTimeComplexity(e.target.value)}
+                  className="w-full text-base font-mono font-bold text-white outline-none bg-transparent placeholder:text-neutral-600 focus:text-[#cbe557]"
+                />
+              </div>
+              <div className="group/complexity bg-white/5 p-5 rounded-2xl border border-white/10 hover:border-purple-400/50 transition-all shadow-sm">
+                <label className="block text-xs font-black text-neutral-400 uppercase mb-3 flex items-center gap-2">
+                  <Layers size={14} className="text-purple-400" />
+                  Space Complexity
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. O(1)"
+                  value={spaceComplexity}
+                  onChange={(e) => setSpaceComplexity(e.target.value)}
+                  className="w-full text-base font-mono font-bold text-white outline-none bg-transparent placeholder:text-neutral-600 focus:text-purple-400"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ==================== ACTION BUTTONS ==================== */}
+          <div className="mt-8 flex items-center justify-between gap-4 flex-wrap">
+            {/* Clear Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setAnswer("");
+                setCodeOutput(null);
+                setCodeStatus("idle");
+                setTimeComplexity("");
+                setSpaceComplexity("");
+                setWhiteboardElements([]);
+                if (excalidrawAPI) {
+                  excalidrawAPI.resetScene();
+                }
+              }}
+              className="group/clear flex items-center gap-2.5 text-neutral-500 text-sm font-black hover:text-white transition-all px-5 py-3 hover:bg-white/10 rounded-xl border border-transparent hover:border-white/10"
+            >
+              <Trash2 size={16} className="group-hover/clear:rotate-12 group-hover/clear:scale-110 transition-transform" />
+              Clear Answer
+            </button>
+
+            {/* Submit Button (LIME PRIMARY) */}
+            <button
+              type="submit"
+              disabled={loading || !token || !answer.trim()}
+              className={`relative group/submit px-8 md:px-12 py-4 md:py-5 rounded-xl font-black text-base md:text-lg shadow-2xl transition-all transform active:scale-95 flex items-center gap-4 overflow-hidden ${!token || !answer.trim() || loading
+                  ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
+                  : "bg-[#cbe557] text-neutral-950 hover:shadow-[#cbe557]/40 hover:shadow-2xl hover:scale-[1.03]"
+                }`}
+            >
+              {/* Animated shine */}
+              {!loading && token && answer.trim() && (
+                <>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover/submit:translate-x-full transition-transform duration-1000"></div>
+
+                  {/* Sparkle particles */}
+                  <div className="absolute inset-0 overflow-hidden">
+                    {[...Array(5)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="absolute w-1.5 h-1.5 bg-black rounded-full opacity-0 group-hover/submit:opacity-50 group-hover/submit:animate-ping"
+                        style={{
+                          left: `${15 + i * 18}%`,
+                          top: `${25 + i * 12}%`,
+                          animationDelay: `${i * 0.15}s`
+                        }}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <span className="relative z-10 flex items-center gap-3">
+                {loading ? (
+                  <>
+                    <div className="w-7 h-7 border-4 border-black/30 border-t-black rounded-full animate-spin"></div>
+                    <span>Analyzing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Submit Answer</span>
+                    <CheckCircle size={26} className="group-hover/submit:scale-110 group-hover/submit:rotate-12 transition-transform" />
+                  </>
+                )}
+              </span>
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+)}
 
         {/* FINAL RESULTS (unchanged) */}
         {/* FINAL RESULTS - UPDATED */}
         {stage === "done" && (
           <div className="max-w-5xl mx-auto animate-in fade-in zoom-in duration-500">
-            <div className="p-10 rounded-3xl bg-white border-2 border-slate-200 shadow-2xl">
+<div className="p-6 md:p-8 rounded-2xl bg-white border-2 border-slate-200 shadow-2xl">
               
               {/* Header */}
               <div className="text-center mb-10">

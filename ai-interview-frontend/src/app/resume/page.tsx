@@ -15,8 +15,14 @@ import {
   Phone,
   Award,
   Building,
+  Loader2,
+  Zap,
+  ArrowRight,
+  Code,
+  ChevronRight
 } from "lucide-react";
 
+// --- TYPES ---
 type UploadStatus = "idle" | "uploading" | "success" | "error";
 
 export type ParsedResume = {
@@ -45,6 +51,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
 
   const { token } = useAuth();
 
+  // --- STATE ---
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
@@ -56,6 +63,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
   const MAX_BYTES = 10 * 1024 * 1024;
   const ACCEPTED = [".pdf", ".docx", ".txt"];
 
+  // --- HELPERS ---
   function formatFileSize(bytes: number) {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -81,6 +89,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
     return true;
   };
 
+  // --- HANDLERS ---
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -142,6 +151,13 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
     setProgress(0);
     setErrorMsg(null);
 
+    let fakeProgressInterval: NodeJS.Timeout;
+    if (file.size < 500000) {
+       fakeProgressInterval = setInterval(() => {
+          setProgress(prev => Math.min(prev + 10, 90));
+       }, 200);
+    }
+
     try {
       const form = new FormData();
       form.append("file", file, file.name);
@@ -164,6 +180,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
         };
 
         xhr.onload = () => {
+          clearInterval(fakeProgressInterval);
           const status = xhr.status;
           let body: any = null;
           try {
@@ -173,17 +190,19 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
           }
 
           if (status >= 200 && status < 300) {
+            setProgress(100);
             const parsedBody: ParsedResume = body.parsed ?? body;
-            setParsed(parsedBody);
-            setUploadStatus("success");
-
-            try {
-              const fileUrl = parsedBody.file_url ?? parsedBody.resume_url ?? null;
-              onReady?.(parsedBody, fileUrl);
-            } catch (cbErr) {
-              console.warn("onReady callback threw:", cbErr);
-            }
-            resolve();
+            setTimeout(() => {
+              setParsed(parsedBody);
+              setUploadStatus("success");
+              try {
+                const fileUrl = parsedBody.file_url ?? parsedBody.resume_url ?? null;
+                onReady?.(parsedBody, fileUrl);
+              } catch (cbErr) {
+                console.warn("onReady callback threw:", cbErr);
+              }
+              resolve();
+            }, 600);
           } else {
             const msg = body?.error ?? JSON.stringify(body ?? { status: status });
             setErrorMsg(msg);
@@ -193,6 +212,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
         };
 
         xhr.onerror = () => {
+          clearInterval(fakeProgressInterval);
           setErrorMsg("Network error during upload");
           setUploadStatus("error");
           reject(new Error("Network error during upload"));
@@ -206,7 +226,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
     }
   }
 
-  // --- SAFE RENDER HELPERS ---
+  // --- SAFE RENDER HELPER ---
   function safeRender(value: any): React.ReactNode {
     if (value === null || value === undefined) return null;
     if (React.isValidElement(value)) return value;
@@ -214,14 +234,11 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
     if (t === "string" || t === "number" || t === "boolean") return value;
     if (Array.isArray(value)) return value.map((v, i) => <React.Fragment key={i}>{safeRender(v)}</React.Fragment>);
     try {
-      // Attempt to pick common display properties for objects to keep JSON small
       if (typeof value === "object") {
         if (value.name && typeof value.name === "string") return value.name;
         if (value.title && typeof value.title === "string") return value.title;
         if (value.company && typeof value.company === "string") return value.company;
-        if (value.text && typeof value.text === "string") return value.text;
-        // fallback to JSON with limited depth
-        return JSON.stringify(value, Object.keys(value).slice(0, 8));
+        return JSON.stringify(value, Object.keys(value).slice(0, 3));
       }
     } catch (e) {
       return String(value);
@@ -229,6 +246,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
     return String(value);
   }
 
+  // --- RENDER SECTIONS ---
   function renderEducation(edu?: Array<any>) {
     if (!edu || !Array.isArray(edu) || edu.length === 0) return null;
     return (
@@ -241,20 +259,22 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
             const end = typeof e.end_date === "string" ? e.end_date : (e.end || "");
 
             return (
-              <div key={idx} className="p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
-                <div className="flex justify-between items-start">
+              <div key={idx} className="group p-4 rounded-xl bg-white/5 border border-white/10 hover:border-[#cbe557]/50 hover:bg-white/10 transition-all duration-300">
+                <div className="flex justify-between items-start gap-3">
                   <div className="flex-1">
-                    <div className="font-semibold text-slate-800">{safeRender(institution)}</div>
-                    <div className="text-sm text-slate-600 mt-1">{safeRender(degree)}</div>
+                    <div className="font-semibold text-white group-hover:text-[#cbe557] transition-colors">{safeRender(institution)}</div>
+                    <div className="text-sm text-neutral-400 mt-1">{safeRender(degree)}</div>
                   </div>
-                  <div className="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full whitespace-nowrap ml-3">
-                    {safeRender(start)} {start && end ? "—" : ""} {safeRender(end)}
-                  </div>
+                  {(start || end) && (
+                    <span className="text-xs text-neutral-500 bg-black/20 px-2 py-1 rounded border border-white/5 whitespace-nowrap font-mono">
+                      {safeRender(start)} {start && end ? "-" : ""} {safeRender(end)}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           }
-          return <div key={idx} className="p-4 bg-white rounded border">{safeRender(e)}</div>;
+          return null;
         })}
       </div>
     );
@@ -262,17 +282,10 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
 
   function renderExperience(exp?: Array<any>) {
     if (!exp || !Array.isArray(exp) || exp.length === 0) return null;
-
     return (
       <div className="space-y-3">
         {exp.map((job, idx) => {
-          if (typeof job !== "object" || job === null) {
-            return (
-              <div key={idx} className="p-4 border rounded">
-                {safeRender(job)}
-              </div>
-            );
-          }
+          if (typeof job !== "object" || job === null) return null;
 
           const company = typeof job.company === "string" ? job.company : (job.company?.name ?? "Company");
           const position = typeof job.position === "string" ? job.position : (job.title ?? "Role");
@@ -281,40 +294,37 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
           let achievements: string[] = [];
           if (Array.isArray(job.achievements)) {
             achievements = job.achievements.map((a: any) => {
-              if (typeof a === "string" || typeof a === "number") return String(a);
+              if (typeof a === "string") return String(a);
               if (a && typeof a === "object") {
-                // prefer common text fields
                 if (typeof a.text === "string") return a.text;
-                if (typeof a.description === "string") return a.description;
-                if (typeof a.title === "string") return a.title;
-                return JSON.stringify(a, Object.keys(a).slice(0, 6));
+                return JSON.stringify(a).slice(0, 50);
               }
               return String(a);
             });
           } else if (typeof job.achievements === "string") {
             achievements = [job.achievements];
-          } else if (job.achievements && typeof job.achievements === "object") {
-            achievements = [safeRender(job.achievements) as string];
           }
 
           return (
-            <div key={idx} className="p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <div className="font-semibold text-slate-800">{safeRender(company)}</div>
-                  <div className="text-sm text-indigo-600 font-medium">{safeRender(position)}</div>
+            <div key={idx} className="group p-4 rounded-xl bg-white/5 border border-white/10 hover:border-[#cbe557]/50 hover:bg-white/10 transition-all duration-300">
+              <div className="flex justify-between items-start gap-3 mb-2">
+                <div className="flex-1">
+                  <div className="font-semibold text-white text-lg">{safeRender(company)}</div>
+                  <div className="text-sm text-[#cbe557] font-medium tracking-wide">{safeRender(position)}</div>
                 </div>
                 {duration && (
-                  <div className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                  <span className="text-xs text-neutral-500 bg-black/20 px-2 py-1 rounded border border-white/5 whitespace-nowrap font-mono">
                     {safeRender(duration)}
-                  </div>
+                  </span>
                 )}
               </div>
-
               {achievements.length > 0 && (
-                <ul className="list-disc list-inside text-xs text-slate-600 space-y-1 mt-2">
+                <ul className="space-y-1.5 mt-3">
                   {achievements.map((ach, i) => (
-                    <li key={i}>{safeRender(ach)}</li>
+                    <li key={i} className="flex items-start gap-2 text-xs text-neutral-400">
+                      <span className="text-[#cbe557] mt-1.5 w-1 h-1 rounded-full bg-[#cbe557]" />
+                      <span className="leading-relaxed">{safeRender(ach)}</span>
+                    </li>
                   ))}
                 </ul>
               )}
@@ -325,220 +335,287 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
     );
   }
 
-  // Debug scan to help locate raw objects that might accidentally be rendered
+  // --- DEBUG SCAN ---
   useEffect(() => {
     if (!parsed) return;
-    function findObjects(o: any, path = "") {
-      if (o === null || o === undefined) return;
-      if (typeof o === "object" && !Array.isArray(o) && !React.isValidElement(o)) {
-        const keys = Object.keys(o).sort().join(",");
-        if (keys.includes("company") && keys.includes("position")) {
-          console.warn("Found job-like object at", path || "parsed", o);
-        }
-        Object.entries(o).forEach(([k, v]) => findObjects(v, path ? `${path}.${k}` : k));
-      } else if (Array.isArray(o)) {
-        o.forEach((v, i) => findObjects(v, `${path}[${i}]`));
-      }
-    }
     try {
-      findObjects(parsed);
+      console.log("Parsed Data Loaded:", parsed);
     } catch (e) {
       console.warn("scan failed", e);
     }
   }, [parsed]);
 
+  // --- MAIN RENDER ---
   return (
-    <div className="min-h-[90vh] bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center py-12 px-4">
-      <div className="w-full max-w-6xl">
+    <div className="min-h-screen bg-neutral-950 text-neutral-200 font-sans selection:bg-[#cbe557] selection:text-black">
+      
+      {/* --- Ambient Glow Effects --- */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        {/* Top Center Glow */}
+        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[#cbe557]/10 rounded-full blur-[120px]" />
+        {/* Bottom Right Glow */}
+        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-emerald-900/20 rounded-full blur-[100px]" />
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(rgba(203,229,87,0.3)_1px,transparent_1px),linear-gradient(90deg,rgba(203,229,87,0.3)_1px,transparent_1px)] bg-[size:50px_50px]" />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <div className="inline-flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-xl">
-                <Sparkles className="text-white" size={20} />
+        <header className="mb-10 animate-in fade-in slide-in-from-top-4 duration-700">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#cbe557] flex items-center justify-center shadow-[0_0_20px_rgba(203,229,87,0.3)]">
+                <Sparkles className="text-black" size={26} strokeWidth={2.5} />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-slate-800">Resume Parser</h1>
-                <p className="text-sm text-slate-500">Upload a resume to extract details</p>
+                <h1 className="text-3xl font-bold text-white tracking-tight">Resume Parser</h1>
+                <p className="text-sm text-neutral-400">AI-Powered Extraction Engine</p>
               </div>
             </div>
-          </div>
 
-          <div className="hidden sm:flex items-center gap-3">
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/90 border border-slate-100 shadow-sm hover:shadow-md transition"
-              onClick={() => {
-                setParsed(null);
-                setFile(null);
-                setUploadStatus("idle");
-                setProgress(0);
-                setErrorMsg(null);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-            >
-              <X size={16} /> Reset
-            </button>
+            <div className="flex items-center gap-3">
+              {(file || parsed) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setParsed(null);
+                    setFile(null);
+                    setUploadStatus("idle");
+                    setProgress(0);
+                    setErrorMsg(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-400 hover:text-white transition-colors"
+                >
+                  Start Over
+                </button>
+              )}
 
-            <button
-              type="button"
-              onClick={() => {
-                if (handleAuthCheck()) fileInputRef.current?.click();
-              }}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg hover:scale-[1.02] transition-transform ${
-                token ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white" : "bg-slate-200 text-slate-600"
-              }`}
-            >
-              <Upload size={16} /> {token ? "Upload" : "Login to upload"}
-            </button>
-          </div>
-        </div>
-
-        {/* Main Card */}
-        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 border border-slate-100">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-            {/* LEFT: Upload Area */}
-            <div className="space-y-6 relative">
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => { if (handleAuthCheck()) fileInputRef.current?.click(); }}
-                className={`relative rounded-2xl p-8 text-center cursor-pointer transition-all border-2 ${
-                  isDragging ? "border-indigo-200 bg-indigo-50 scale-[1.01]" : "border-dashed border-slate-200 hover:border-indigo-300"
+              <button
+                type="button"
+                onClick={() => {
+                  if (handleAuthCheck()) fileInputRef.current?.click();
+                }}
+                disabled={!token}
+                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                  token 
+                    ? "bg-[#cbe557] text-neutral-900 hover:bg-[#dfff6b] hover:scale-105 hover:shadow-[0_0_25px_rgba(203,229,87,0.4)]" 
+                    : "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                 }`}
               >
-                {!file ? (
-                  <div>
-                    <div className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-5 bg-slate-100">
-                      <Upload className="text-slate-400" size={36} />
-                    </div>
-                    <h3 className="text-xl font-semibold text-slate-800 mb-2">Drop resume here</h3>
-                    <p className="text-slate-500 mb-6">PDF, DOCX, TXT</p>
+                <Upload size={18} /> {token ? "Upload Resume" : "Login Required"}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Glass Layout */}
+        <div className="grid lg:grid-cols-12 gap-8 h-full min-h-[600px]">
+          
+          {/* LEFT: Upload Zone (4 Cols) */}
+          <div className={`lg:col-span-4 flex flex-col transition-all duration-500 ${parsed ? 'lg:col-span-4' : 'lg:col-span-12 max-w-2xl mx-auto w-full'}`}>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => { if (handleAuthCheck()) fileInputRef.current?.click(); }}
+              className={`
+                relative flex-1 rounded-3xl border-2 border-dashed transition-all duration-300 cursor-pointer overflow-hidden group
+                ${isDragging 
+                  ? "border-[#cbe557] bg-[#cbe557]/10 scale-[1.02] shadow-[0_0_30px_rgba(203,229,87,0.2)]" 
+                  : "border-white/10 bg-white/5 hover:border-[#cbe557]/50 hover:bg-white/10"
+                }
+              `}
+            >
+              <div className="absolute inset-0 backdrop-blur-xl -z-10" />
+
+              {!file ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-10 min-h-[400px]">
+                  <div className="w-24 h-24 rounded-full bg-neutral-900/50 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 group-hover:border-[#cbe557]/50">
+                    <Upload className="text-neutral-400 group-hover:text-[#cbe557] transition-colors" size={32} />
                   </div>
-                ) : (
-                  <div className="text-left">
-                    <div className="flex items-center gap-3 mb-4">
-                      <FileText className="text-indigo-600" size={24} />
-                      <div>
-                        <div className="font-semibold text-slate-800">{safeRender(file.name)}</div>
-                        <div className="text-xs text-slate-500">{formatFileSize(file.size)}</div>
-                      </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Drop your resume</h3>
+                  <p className="text-neutral-400 text-sm mb-8">PDF, DOCX, or TXT (Max 10MB)</p>
+                  <span className="px-5 py-2.5 rounded-full bg-neutral-800 border border-white/10 text-xs font-medium text-neutral-300 group-hover:bg-[#cbe557] group-hover:text-black transition-all">
+                    Browse Files
+                  </span>
+                </div>
+              ) : (
+                <div className="h-full p-8 flex flex-col">
+                  {/* File Info Card */}
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-black/40 border border-white/10 backdrop-blur-md">
+                    <div className="p-3 rounded-xl bg-[#cbe557]/20 text-[#cbe557]">
+                      <FileText size={24} />
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-white truncate">{safeRender(file.name)}</div>
+                      <div className="text-xs text-neutral-400 font-mono mt-0.5">{formatFileSize(file.size)}</div>
+                    </div>
+                    <button 
+                      onClick={(e) => {e.stopPropagation(); handleRemove();}}
+                      className="p-2 text-neutral-500 hover:text-red-400 transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
 
-                    {uploadStatus === "uploading" && (
-                      <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
-                        <div style={{ width: `${progress}%` }} className="h-2 bg-indigo-600 rounded-full" />
+                  <div className="flex-1 flex flex-col justify-center">
+                    {uploadStatus === "uploading" ? (
+                      <div className="space-y-4">
+                         <div className="flex justify-between text-xs font-bold tracking-widest text-[#cbe557] uppercase">
+                            <span>Processing</span>
+                            <span>{progress}%</span>
+                         </div>
+                         <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
+                            <div 
+                              style={{ width: `${progress}%` }} 
+                              className="h-full bg-[#cbe557] shadow-[0_0_10px_#cbe557] transition-all duration-300"
+                            />
+                         </div>
+                         <p className="text-center text-xs text-neutral-500">AI is reading document structure...</p>
                       </div>
-                    )}
-
-                    {uploadStatus !== "uploading" && (
+                    ) : (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleUpload(); }}
-                        className="w-full py-2 bg-indigo-600 text-white rounded-lg font-medium"
+                        className="w-full py-4 bg-[#cbe557] text-black rounded-xl font-bold text-lg shadow-[0_0_20px_rgba(203,229,87,0.3)] hover:shadow-[0_0_30px_rgba(203,229,87,0.5)] hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
                       >
-                        Parse Resume
+                        <Zap size={20} fill="black" /> Parse Now
                       </button>
                     )}
                   </div>
-                )}
-                <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt" onChange={handleFileSelect} className="hidden" />
-              </div>
-              {errorMsg && <div className="text-sm text-rose-600 bg-rose-50 p-2 rounded">{safeRender(errorMsg)}</div>}
-            </div>
-
-            {/* RIGHT: Preview */}
-            <div className="space-y-6">
-              {!parsed ? (
-                <div className="h-full p-12 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col items-center justify-center text-center text-slate-400">
-                  <FileText size={48} className="mb-4 opacity-20" />
-                  <div>Parsed data will appear here</div>
                 </div>
-              ) : (
-                <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-500">
-                  {/* Name Card */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg">
-                    <h2 className="text-2xl font-bold">{safeRender(parsed.name) || "Candidate"}</h2>
-                    <div className="mt-2 space-y-1 text-white/90 text-sm">
-                      {parsed.email && <div className="flex items-center gap-2"><Mail size={14} /> {safeRender(parsed.email)}</div>}
-                      {parsed.phone && <div className="flex items-center gap-2"><Phone size={14} /> {safeRender(parsed.phone)}</div>}
-                    </div>
-                    {parsed.experience_years !== null && parsed.experience_years !== undefined && (
-                      <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-xs font-medium">
-                        <Briefcase size={12} /> {safeRender(parsed.experience_years)} Years Exp.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Summary */}
-                  {parsed.summary && (
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                      <div className="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
-                        <Award size={18} /> Summary
-                      </div>
-                      <p className="text-sm text-slate-600 leading-relaxed">{safeRender(parsed.summary)}</p>
-                    </div>
-                  )}
-
-                  {/* Skills */}
-                  {parsed.skills && parsed.skills.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                      <div className="flex flex-wrap gap-2">
-                        {parsed.skills.map((s, i) => (
-                          <span key={i} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-medium border border-indigo-100">{safeRender(s)}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Experience */}
-                  {parsed.experience && parsed.experience.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                      <div className="flex items-center gap-2 mb-3 text-blue-600 font-semibold">
-                        <Building size={18} /> Experience
-                      </div>
-                      {renderExperience(parsed.experience)}
-                    </div>
-                  )}
-
-                  {/* Education */}
-                  {parsed.education && parsed.education.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                      <div className="flex items-center gap-2 mb-3 text-emerald-600 font-semibold">
-                        <GraduationCap size={18} /> Education
-                      </div>
-                      {renderEducation(parsed.education)}
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-bold shadow-lg hover:shadow-emerald-200 transition-all"
-                      onClick={() => {
-                        if (handleAuthCheck()) {
-                          if (onStart) onStart();
-                          if (parsed) onReady?.(parsed, parsed.file_url ?? null);
-                        }
-                      }}
-                    >
-                      Start Interview
-                    </button>
-                    <button
-                      className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all"
-                      onClick={() => {
-                        setParsed(null);
-                        setFile(null);
-                        setUploadStatus("idle");
-                      }}
-                    >
-                      New
-                    </button>
-                  </div>
+              )}
+              <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt" onChange={handleFileSelect} className="hidden" />
+              
+              {errorMsg && (
+                <div className="absolute bottom-6 left-6 right-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center justify-center gap-2 backdrop-blur-md">
+                  <X size={16} /> {safeRender(errorMsg)}
                 </div>
               )}
             </div>
           </div>
+
+          {/* RIGHT: Results Zone (8 Cols) */}
+          {(parsed || uploadStatus === "uploading") && (
+            <div className="lg:col-span-8 animate-in slide-in-from-right-8 duration-700 fade-in h-full">
+              <div className="h-full rounded-3xl bg-white/5 border border-white/10 backdrop-blur-2xl p-1 overflow-hidden relative">
+                
+                {/* Scanning Animation */}
+                {uploadStatus === "uploading" && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
+                    <style jsx>{`
+                      @keyframes radar {
+                        0% { transform: scale(0.8); opacity: 0; }
+                        50% { opacity: 0.5; }
+                        100% { transform: scale(2); opacity: 0; }
+                      }
+                      .radar-ping { animation: radar 2s infinite ease-out; }
+                    `}</style>
+                    <div className="absolute w-32 h-32 bg-[#cbe557] rounded-full radar-ping" />
+                    <div className="relative z-10 bg-neutral-900 p-4 rounded-2xl border border-[#cbe557]/30 shadow-[0_0_30px_rgba(203,229,87,0.2)]">
+                      <Loader2 className="w-10 h-10 text-[#cbe557] animate-spin" />
+                    </div>
+                    <div className="mt-6 text-center">
+                      <h3 className="text-xl font-bold text-white">Analyzing Data</h3>
+                      <p className="text-neutral-400 text-sm mt-1">Extracting skills & history...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Parsed Content */}
+                {parsed && (
+                  <div className="h-full overflow-y-auto pr-2 custom-scrollbar p-6 lg:p-8">
+                    <div className="space-y-6">
+                      
+                      {/* Name Card */}
+                      <div className="p-8 rounded-2xl bg-neutral-900 border border-white/10 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                          <Sparkles size={100} className="text-white" />
+                        </div>
+                        <div className="relative z-10">
+                          <h2 className="text-3xl font-bold text-white mb-2">{safeRender(parsed.name) || "Candidate Name"}</h2>
+                          <div className="flex flex-wrap gap-4 text-sm text-neutral-400">
+                            {parsed.email && <div className="flex items-center gap-2"><Mail size={14} className="text-[#cbe557]"/> {safeRender(parsed.email)}</div>}
+                            {parsed.phone && <div className="flex items-center gap-2"><Phone size={14} className="text-[#cbe557]"/> {safeRender(parsed.phone)}</div>}
+                          </div>
+                          {parsed.experience_years !== null && parsed.experience_years !== undefined && (
+                            <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-[#cbe557] text-neutral-900 rounded-lg text-sm font-bold shadow-[0_0_15px_rgba(203,229,87,0.3)]">
+                              <Briefcase size={16} /> {safeRender(parsed.experience_years)} Years Experience
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Summary */}
+                      {parsed.summary && (
+                        <div className="p-6 rounded-2xl bg-white/5 border border-white/5">
+                          <div className="flex items-center gap-2 mb-3 text-[#cbe557] font-bold text-xs uppercase tracking-widest">
+                            <Award size={14} /> Professional Summary
+                          </div>
+                          <p className="text-sm text-neutral-300 leading-7">{safeRender(parsed.summary)}</p>
+                        </div>
+                      )}
+
+                      {/* Skills */}
+                      {parsed.skills && parsed.skills.length > 0 && (
+                        <div className="p-6 rounded-2xl bg-white/5 border border-white/5">
+                          <div className="flex items-center gap-2 mb-4 text-[#cbe557] font-bold text-xs uppercase tracking-widest">
+                            <Code size={14}/> Technical Skills
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {parsed.skills.map((s, i) => (
+                              <span key={i} className="px-3 py-1.5 bg-[#cbe557]/10 text-[#cbe557] border border-[#cbe557]/20 rounded-lg text-xs font-medium hover:bg-[#cbe557]/20 transition-colors cursor-default">
+                                {safeRender(s)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Experience */}
+                      {parsed.experience && parsed.experience.length > 0 && (
+                        <div className="p-6 rounded-2xl bg-white/5 border border-white/5">
+                          <div className="flex items-center gap-2 mb-4 text-[#cbe557] font-bold text-xs uppercase tracking-widest">
+                            <Building size={14} /> Work Experience
+                          </div>
+                          {renderExperience(parsed.experience)}
+                        </div>
+                      )}
+
+                      {/* Education */}
+                      {parsed.education && parsed.education.length > 0 && (
+                        <div className="p-6 rounded-2xl bg-white/5 border border-white/5">
+                          <div className="flex items-center gap-2 mb-4 text-[#cbe557] font-bold text-xs uppercase tracking-widest">
+                            <GraduationCap size={14} /> Education
+                          </div>
+                          {renderEducation(parsed.education)}
+                        </div>
+                      )}
+
+                      {/* Footer Actions */}
+                      <div className="pt-4 pb-2">
+                        <button
+                          onClick={() => {
+                            if (handleAuthCheck()) {
+                              if (onStart) onStart();
+                              if (parsed) onReady?.(parsed, parsed.file_url ?? null);
+                            }
+                          }}
+                          className="w-full group py-4 bg-white text-black hover:bg-[#cbe557] rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-3"
+                        >
+                          <CheckCircle size={20} className="text-black"/> 
+                          Confirm & Start Interview
+                          <ChevronRight size={20} className="opacity-50 group-hover:translate-x-1 transition-transform"/>
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -59,6 +59,7 @@ function inferSemanticType(parsed) {
   if (parsed?.type) return parsed.type;
   if (parsed?.coding_challenge) return "dsa";
   if (parsed?.target_project) return "project_discussion";
+  if (parsed?.coding_challenge?.starter_code && parsed?.question?.includes("bug")) return "debugging";
   return "conceptual";
 }
 
@@ -778,6 +779,7 @@ const metadata = aiResp.metadata || {};
             "Tell me about the most technically challenging project on your resume. What specific problem did you solve, and how did you approach it?";
 let normalizedType = parsed.type || "text";
         if (normalizedType === "coding_challenge") normalizedType = "code";
+        if (normalizedType === "debugging") normalizedType = "code"; // 🔥 Enable IDE for debugging
         if (normalizedType === "system_design") normalizedType = "system_design";
         const semanticType = inferSemanticType(parsed);
 
@@ -1166,6 +1168,7 @@ key_strengths: pyDecision.key_strengths || [],
              const parsedNext = genResp.parsed || {};
              let nextType = parsedNext.type || "text";
              if (nextType === "coding_challenge") nextType = "code";
+             if (nextType === "debugging") nextType = "code";
              if (nextType === "system_design") nextType = "system_design";
              
              const newQa = await createQARecordDB(

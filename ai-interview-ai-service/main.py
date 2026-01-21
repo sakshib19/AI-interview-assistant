@@ -127,9 +127,9 @@ INTERVIEW_ROUNDS = {
     },
     "technical": {
         "name": "Technical Round",
-        "focus": ["project_discussion", "coding_challenge", "system_design"], # <--- Included here
-        "min_questions": 3, 
-        "max_questions": 5, # Increased max to allow for a design question
+        "focus": ["project_discussion", "coding_challenge", "system_design","debugging"], # <--- Included here
+        "min_questions": 4, 
+        "max_questions": 7, # Increased max to allow for a design question
         "pass_threshold": 0.60,
         "elimination": True
     },
@@ -225,6 +225,29 @@ FALLBACK_QUESTIONS = {
     "achievement": {
         "question": "What is your most significant professional achievement?",
         "type": "achievement"   # <--- FIXED: Matches key name
+    },
+    "debugging": {
+        "question": "The following function is supposed to find the maximum sum of a contiguous subarray (Kadane's Algorithm). However, it fails for arrays containing only negative numbers. Find the bug and fix it.",
+        "type": "debugging",
+        "coding_challenge": {
+            "language": "python",
+            "starter_code": """def max_subarray_sum(nums):
+    max_so_far = 0  # BUG: Should be float('-inf') to handle negative arrays
+    current_max = 0
+    
+    for x in nums:
+        current_max = current_max + x
+        if current_max < 0:
+            current_max = 0
+        if max_so_far < current_max:
+            max_so_far = current_max
+            
+    return max_so_far""",
+            "test_cases": [
+                {"input": "[-2, -3, -1, -5]", "expected": "-1"},
+                {"input": "[1, -2, 3, 4]", "expected": "7"}
+            ]
+        }
     }
     # 👆 UPDATED SECTION END 👆
 }
@@ -1557,7 +1580,7 @@ def build_generate_question_prompt(
 ═══════════════════════════════════════════════════════════════════
 🎯 CURRENT ROUND: INTERVIEW COMPLETE
 Status: All rounds finished.
-Action: Generate a closing statement or final check.
+Action: Genkerate a closing statement or final check.
 ═══════════════════════════════════════════════════════════════════
 """    
         elif state.current_round in INTERVIEW_ROUNDS:
@@ -1655,6 +1678,23 @@ Pass Threshold: {round_config['pass_threshold'] * 100}%
   3. Mention: "You can use the whiteboard to draw your components."
 - Difficulty: {difficulty_level}
 """    
+    elif required_type == "debugging":
+        project_focus = f"""
+🎯 FOCUS: DEBUGGING / SABOTAGE ROUND
+- You must generate a **coding problem** and provide a **BUGGY solution**.
+- The candidate's job is to FIX the code.
+- **Rules for the Bug**:
+  1. It must be a **LOGICAL bug** (e.g., off-by-one, missing edge case handling, wrong variable update).
+  2. It must **NOT** be a syntax error (the code should run but produce wrong output).
+  3. The problem difficulty should be: {difficulty_level}.
+  4. Choose a classic algorithm (e.g., Binary Search, Merge Sort, BFS, Sliding Window).
+  
+- **Starter Code Requirement**:
+  - Provide a complete function implementation.
+  - Insert exactly ONE or TWO subtle bugs.
+  - Add a comment near the bug ONLY if it's internal context (do not reveal it to the candidate in the description).
+"""
+    # 🟢 NEW DEBUGGING BLOCK END     
         
     elif required_type == "experience":
         # ✅ CHECK: Does resume have work experience?
@@ -1785,14 +1825,14 @@ DIFFICULTY: {difficulty_level.upper()}
 ═══════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (JSON ONLY, NO MARKDOWN):
 {{
-  "question": "The interview question (must be SPECIFIC and DIFFERENT from previous)",
+  "question": "The interview question (If debugging: Explain the scenario/failure, e.g. 'This code fails for empty lists')",
   "type": "{required_type}",
   "target_project": "{target_project['project_id'] if target_project else 'general'}",
-  "sub_topic": "Identify specific skill being tested (e.g., 'Memory Management', 'React Hooks', 'Indexing')",
+  "sub_topic": "Identify specific skill being tested",
   "difficulty": "{difficulty_level}",
   "coding_challenge": {{
       "language": "python",
-     "starter_code": "def function_name(params):\n    # TODO: Implement this function\n    pass",
+      "starter_code": "def function_name(params):\n    # TODO: Fix the bug in this function\n    # (Paste the BUGGY implementation here)\n    pass",
       "reference_solution": "def function_name(params):\\n    # FULL WORKING SOLUTION REQUIRED FOR VALIDATION\\n    return result",
       "test_cases": [
           {{"input": "\\"json_value\\"", "expected": "\\"expected_output\\""}},
@@ -1800,8 +1840,7 @@ OUTPUT FORMAT (JSON ONLY, NO MARKDOWN):
       ]
   }}
 }}
-🚨 FINAL CHECK: Re-read the PREVIOUS QUESTIONS section. Is your new question about the SAME topic? If yes, CHANGE IT.
-"""
+🚨 FINAL CHECK: Re-read the PREVIOUS QUESTIONS section. Is your new question about the SAME topic? If yes, CHANGE IT."""
     return prompt.strip()
 
 # ==========================================
@@ -1908,6 +1947,20 @@ def build_score_prompt(
     f"- {name} (weight {info['weight']}): {info['description']}"
     for name, info in SCORING_DIMENSIONS.items()
 )    
+    debugging_instruction = ""
+    if question_type == "debugging":
+        debugging_instruction = """
+--------------------------------------------------
+DEBUGGING ROUND SCORING RULES
+--------------------------------------------------
+1. **Diagnosis (30%)**: Did they identify WHY the code was failing?
+2. **The Fix (40%)**: Did they modify the logic correctly without breaking existing functionality?
+3. **Efficiency (20%)**: Did they fix the bug in a clean way, or did they write a messy patch?
+4. **Verification (10%)**: Did they run tests to prove the fix works?
+
+- **Bonus**: If they explain the root cause clearly (e.g., "The previous loop condition caused an index out of bounds").
+- **Penalty**: If they rewrote the entire function from scratch instead of debugging the existing code.
+"""
 
     CONSISTENCY_RULES = ""
     if question_type != "coding_challenge":
@@ -2046,7 +2099,7 @@ STRICT SCORING RULES (NON-NEGOTIABLE)
    - "Good Iterative Debugging":
        • +0.15 practical_experience
        • explicitly praise debugging process
-
+{debugging_instruction}
 --------------------------------------------------
 SCORING DIMENSIONS (YOU MUST SCORE ALL):
 {dimensions_text}
@@ -2149,6 +2202,7 @@ SCORING DIMENSIONS:
 {dimensions_text}
 
 SCORING GUIDELINES:
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 THE "BECAUSE TEST" (BLUFF DETECTION):
 A candidate is BLUFFING if they list a concept without a constraint or reason.
@@ -2386,7 +2440,6 @@ OUTPUT FORMAT:
 # ==========================================
 # DECISION ENGINE
 # ==========================================
-
 def build_decision_prompt(context: dict) -> str:
     """
     Generate comprehensive decision prompt with specific technical evidence.
@@ -2394,7 +2447,7 @@ def build_decision_prompt(context: dict) -> str:
     """
     resume = context.get("resume", "")
     history = context.get("question_history", [])
-    forced_verdict = context.get("final_verdict")  # OPTIONAL but recommended
+    forced_verdict = context.get("final_verdict")  # Passed from call_decision if Hard Rule triggered
     
     metrics = calculate_performance_metrics(history)
 
@@ -2405,6 +2458,7 @@ def build_decision_prompt(context: dict) -> str:
         score = h.get("score", 0)
 
         result = h.get("result", {})
+        # Safety check for diagnosis structure
         diag = result.get("technical_diagnosis") or h.get("technical_diagnosis") or {}
 
         strength = diag.get("win", "N/A")
@@ -2429,6 +2483,7 @@ Q{i} [{q_type.upper()}]: Score {score:.2f}
   "critical_weaknesses": ["specific, recurring technical gaps"]
 }'''
 
+    # Refined prompt to handle Forced Verdicts more naturally
     prompt = f"""
 ROLE: You are a senior interviewer writing professional hiring feedback.
 
@@ -2437,11 +2492,9 @@ Generate a final hiring decision summary strictly based on the verified evidence
 
 IMPORTANT CONSTRAINTS:
 - The hiring decision may already be determined by system rules.
-- If a FINAL_VERDICT is provided, you MUST use it and MUST NOT override it.
+- **FINAL_VERDICT (MANDATORY): {forced_verdict if forced_verdict else "Decide based on evidence"}**
+- If a verdict is specified above, you MUST adopt that stance in your summary.
 - Do NOT invent strengths, weaknesses, or examples.
-- Do NOT soften or exaggerate outcomes.
-
-FINAL_VERDICT (if provided): {forced_verdict or "Not specified"}
 
 METRICS:
 - Questions Asked: {metrics['question_count']}
@@ -2454,30 +2507,35 @@ INTERVIEW EVIDENCE LOG:
 --------------------------------------------------
 INSTRUCTIONS FOR 'feedback_summary':
 --------------------------------------------------
-1. NO GENERIC FILLER.
-   ❌ "You did well"
-   ❌ "You have potential"
+Write a 3-4 sentence candidate-facing summary.
 
-2. CITE VERIFIED EVIDENCE ONLY.
-   Reference concrete skills, patterns, or gaps found in the evidence log.
+1. **IF VERDICT IS 'REJECT'**:
+   - Be direct but professional. 
+   - State clearly that the technical bar was not met.
+   - Cite the specific gaps from the log (e.g., "While you have basic knowledge of X, deeper understanding of Y is required").
 
-3. BALANCED, PROFESSIONAL TONE.
-   Clear, objective, and constructive. Candidate-facing.
+2. **IF VERDICT IS 'HIRE'**:
+   - Highlight the specific areas of excellence found in the log.
+   - Confirm readiness for the role.
 
-4. LENGTH: 3-4 sentences.
+3. **IF VERDICT IS 'MAYBE' (Gray Zone)**:
+   - Highlight the **INCONSISTENCY**.
+   - Example: "You showed strong potential in Python basics but struggled to apply them in System Design."
 
-If evidence is limited, write a concise, factual summary without speculation.
+4. **NO GENERIC FILLER**:
+   ❌ "You did well and we wish you luck."
+   ✅ "Your explanation of Concurrency was strong, but the coding implementation lacked error handling."
 
 --------------------------------------------------
 INSTRUCTIONS FOR 'key_strengths' / 'critical_weaknesses':
 --------------------------------------------------
-- Extract the top 2-3 recurring themes.
+- Extract the top 2-3 recurring themes from the Evidence Log.
 - Be technical and specific.
   ✅ "Concurrency control", "Edge-case handling"
   ❌ "Hard working", "Good attitude"
 
 --------------------------------------------------
-DECISION RULES:
+DECISION RULES (Only use if FINAL_VERDICT is not specified):
 --------------------------------------------------
 1. CONTINUE (ended: false):
    Confidence < {TERMINATION_RULES['min_confidence_to_end']}
@@ -2714,27 +2772,65 @@ def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
     
     if hard_decision:
         hard_decision["ended"] = True
+
+        # =========================================================
+        # 🔥 FIX: FORCE AI TO WRITE SUMMARY FOR HARD RULES
+        # =========================================================
+        try:
+            # Prepare context for the AI, enforcing the rule's verdict
+            decision_context = context.copy()
+            decision_context["final_verdict"] = hard_decision["verdict"] 
+
+            # Build the prompt
+            prompt = build_decision_prompt(decision_context)
+            
+            # Call AI (use slightly higher temp for better writing)
+            logger.info(f"🤖 Generating summary for Hard Rule: {hard_decision['trigger']}")
+            ai_resp = llm_call(prompt, temperature=0.3, max_tokens=600)
+            
+            if ai_resp.get("ok"):
+                ai_data = extract_json_from_text(ai_resp["raw"]) or {}
+                
+                # Merge AI text into the Hard Decision
+                if ai_data.get("feedback_summary"):
+                    hard_decision["feedback_summary"] = ai_data["feedback_summary"]
+                
+                if ai_data.get("key_strengths"):
+                    hard_decision["key_strengths"] = ai_data["key_strengths"]
+                    
+                if ai_data.get("critical_weaknesses"):
+                    hard_decision["critical_weaknesses"] = ai_data["critical_weaknesses"]
+                    
+                if ai_data.get("recommended_role") and not hard_decision.get("recommended_role"):
+                    hard_decision["recommended_role"] = ai_data["recommended_role"]
+
+        except Exception as e:
+            logger.error(f"Failed to generate AI summary for termination rule: {e}")
+
+        # =========================================================
+        # FALLBACKS (Only used if AI failed above)
+        # =========================================================
         
-        # --- NEW: Populate strengths/weaknesses even for hard rules ---
-        # If the rule didn't generate them, set sensible defaults based on the verdict
+        # Ensure strengths exist
         if not hard_decision.get("key_strengths"):
             if hard_decision.get("verdict") == "hire":
-                 hard_decision["key_strengths"] = ["Strong overall performance", "Met all technical requirements"]
+                 hard_decision["key_strengths"] = ["Strong overall performance", "Met technical requirements"]
             else:
-                 hard_decision["key_strengths"] = ["Participation in technical assessment"] # Neutral fallback
-            
+                 hard_decision["key_strengths"] = ["Participation in technical assessment"] 
+        
+        # Ensure weaknesses exist
         if not hard_decision.get("critical_weaknesses"):
              if hard_decision.get("verdict") == "reject":
                  hard_decision["critical_weaknesses"] = [hard_decision.get("reason", "Did not meet technical bar.")]
              else:
                  hard_decision["critical_weaknesses"] = []
 
-        # Add default feedback summary if missing
+        # Ensure summary exists (This was the specific bug causing your generic message)
         if not hard_decision.get("feedback_summary"):
              if hard_decision.get("verdict") == "reject":
-                hard_decision["feedback_summary"] = "The interview concluded early due to significant gaps in core technical requirements."
+                hard_decision["feedback_summary"] = f"The interview concluded. {hard_decision.get('reason')}"
              else:
-                hard_decision["feedback_summary"] = "You demonstrated excellent proficiency and we are happy to move forward."
+                hard_decision["feedback_summary"] = f"Review complete. {hard_decision.get('reason')}"
             
         return {"ok": True, "parsed": hard_decision, "raw": "hard_rule_triggered"}
 
@@ -2756,7 +2852,7 @@ def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
             "raw": "safety_guard_triggered"
         }
 
-    # 3. Consult AI
+    # 3. Consult AI (Standard Flow)
     prompt = build_decision_prompt(context)
     resp = llm_call(prompt, temperature=temperature, max_tokens=600)
     
@@ -2790,7 +2886,7 @@ def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
         "critical_weaknesses": parsed.get("critical_weaknesses", [])
     }
 
-    # --- NEW: Ensure lists are not empty if we have data ---
+    # Ensure lists are not empty if we have data
     if not normalized["key_strengths"] and normalized["verdict"] == "hire":
         normalized["key_strengths"] = ["Strong overall performance"]
     
@@ -2800,8 +2896,7 @@ def call_decision(context: dict, temperature: float = 0.0) -> Dict[str, Any]:
     if len(history) >= TERMINATION_RULES["max_questions"]:
         normalized["ended"] = True
     
-    return {"ok": True, "parsed": normalized, "raw": resp["raw"]}# ==========================================
-# PROBE GENERATION
+    return {"ok": True, "parsed": normalized, "raw": resp["raw"]}
 # ==========================================
 
 def build_probe_prompt(weakness_topic: str, prev_question: str, prev_answer: str, context: dict) -> str:
@@ -3269,33 +3364,73 @@ class InterviewState:
         if self.eliminated: return "eliminated"
         if self.current_round == "complete": return "complete"
         
+        # 2. Setup Context
         round_config = INTERVIEW_ROUNDS[self.current_round]
-        focus_areas = round_config["focus"]
         round_questions = self.round_history[self.current_round]["questions"]
+        q_count = len(round_questions)
+        max_q = round_config["max_questions"]
+        
+        # Get list of previously asked question types (ignoring probes)
         asked_types = [q.get("type") for q in round_questions if not q.get("is_probe", False)]
         
+        # ====================================================
+        # 🟢 LOGIC FOR TECHNICAL ROUND (The "Sabotage" Trigger)
+        # ====================================================
+        if self.current_round == "technical":
+            # A. First Priority: Standard Coding Challenge
+            if "coding_challenge" not in asked_types:
+                return "coding_challenge"
+            
+            # B. Second Priority: System Design (Mid-round)
+            # Only if user has skills, hasn't been asked, AND we aren't at the very end
+            if "system_design" not in asked_types and self.has_system_design_skills and q_count < max_q - 1:
+                return "system_design"
+
+            # C. 🔥 LAST STEP: The Sabotage Round
+            # If we are at the LAST allowed question (max_q - 1)
+            # OR if we have already asked 3+ questions
+            if q_count >= max_q - 1:
+                if "debugging" not in asked_types:
+                    return "debugging"
+
+        # ====================================================
+        # Standard Selection Logic (Screening / Behavioral / Fillers)
+        # ====================================================
+        focus_areas = round_config["focus"]
         valid_focus_areas = []
+        
+        # Filter valid topics based on resume signals
         for t in focus_areas:
             if t == "system_design" and not self.has_system_design_skills: continue
             if t == "experience" and not self.has_work_experience: continue
             if t == "achievement" and not self.has_achievements: continue
+            # Don't pick debugging randomly; it is handled explicitly above
+            if t == "debugging": continue 
             valid_focus_areas.append(t)
         
-        if not valid_focus_areas: valid_focus_areas = ["conceptual", "coding_challenge"]
-        if self.current_round == "technical" and "coding_challenge" not in asked_types:
-            return "coding_challenge"
+        # Safety Fallback
+        if not valid_focus_areas: 
+            valid_focus_areas = ["conceptual"]
+            if self.current_round == "technical":
+                valid_focus_areas.append("coding_challenge")
+        
+        # Behavioral Logic: Pick unseen topics
         if self.current_round == "behavioral":
-             remaining = [
-            t for t in valid_focus_areas
-            if t not in self.completed_types
-        ]
+             remaining = [t for t in valid_focus_areas if t not in self.completed_types]
              return remaining[0] if remaining else valid_focus_areas[0]
                 
-        available_types = [t for t in valid_focus_areas if asked_types.count(t) < 2]
-        if available_types:
-            unused = [t for t in available_types if t not in asked_types]
-            return unused[0] if unused else available_types[0]
+        # General Rotation: Least Used First
+        # 1. Try types never asked
+        unused = [t for t in valid_focus_areas if t not in asked_types]
+        if unused:
+            return unused[0]
             
+        # 2. Try types asked less than 2 times
+        available = [t for t in valid_focus_areas if asked_types.count(t) < 2]
+        if available:
+            return available[0]
+            
+        # 3. Fallback to first valid type
         return valid_focus_areas[0]
 
     def is_question_too_similar(self, new_question: str) -> bool:
@@ -3501,6 +3636,70 @@ OUTPUT JSON ONLY:
 # ==========================================
 # MISSING ENDPOINT: GENERATE ROUND FEEDBACK
 # ==========================================
+def build_assessment_prompt(resume_text: str, difficulty: str) -> str:
+    """
+    Generates a high-fidelity, LeetCode-style coding assessment.
+    Enforces strict structure: Constraints, Input/Output formats, and Edge Cases.
+    """
+    
+    # Contextualize difficulty based on user request
+    if difficulty == "easy":
+        diff_desc = "Problem 1: Easy (Arrays/Strings). Problem 2: Medium (HashMaps/Two Pointers)."
+    elif difficulty == "hard":
+        diff_desc = "Problem 1: Medium (Trees/Graphs). Problem 2: Hard (DP/Advanced Recursion)."
+    else: # medium
+        diff_desc = "Problem 1: Easy-Medium (Arrays/Logic). Problem 2: Medium (Stack/Queue/Tree)."
+
+    prompt = f"""
+    ROLE: Senior Competitive Programming Problem Setter (LeetCode/Codeforces).
+    TASK: Generate a 2-question Online Assessment (OA) JSON for a Python developer.
+    
+    CANDIDATE CONTEXT (Tailor themes to this, but keep problems algorithmic):
+    {safe_truncate(resume_text, 800)}
+
+    DIFFICULTY SETTING: {difficulty.upper()}
+    SCOPE:
+    {diff_desc}
+
+    REQUIREMENTS FOR EACH PROBLEM:
+    1. **Title**: Professional and catchy.
+    2. **Description**: Clear, formal problem statement. Include a brief scenario if applicable.
+    3. **Input/Output Format**: Explicitly state what the input looks like (e.g., "A list of integers nums").
+    4. **Constraints**: Define data limits (e.g., "1 <= len(nums) <= 10^5", "-10^9 <= val <= 10^9").
+    5. **Starter Code**: Valid Python function signature with type hints (e.g., `def solve(nums: List[int]) -> int:`).
+    6. **Test Cases**: 
+       - `public`: 2 simple cases (Happy path).
+       - `hidden`: 3 robust cases (Edge cases: empty list, max constraints, negatives).
+       - INPUTS MUST BE STRINGS OR JSON-COMPATIBLE.
+
+    OUTPUT JSON FORMAT (STRICT):
+    {{
+        "assessment_id": "auto_generated_id",
+        "problems": [
+            {{
+                "problem_id": "1",
+                "title": "Problem Title",
+                "description": "Full markdown description...",
+                "input_format": "Detailed input description...",
+                "output_format": "Detailed output description...",
+                "constraints": ["Constraint 1", "Constraint 2"],
+                "difficulty": "{difficulty}",
+                "starter_code": "from typing import List\\n\\ndef solution(args):\\n    pass",
+                "public_test_cases": [
+                    {{"input": "[1, 2, 3]", "expected": "6"}},
+                    {{"input": "[10, -5]", "expected": "5"}}
+                ],
+                "hidden_test_cases": [
+                    {{"input": "[]", "expected": "0"}}, 
+                    {{"input": "[0, 0, 0]", "expected": "0"}}
+                ]
+            }}
+        ]
+    }}
+    
+    DO NOT return markdown code fences. Return RAW JSON only.
+    """
+    return prompt.strip()
 @app.post("/generate_feedback")
 def generate_feedback(req: FeedbackRequest):
     """
@@ -4088,7 +4287,7 @@ def run_code(req: CodeSubmissionRequest):
         if match:
             target_func = match.group(1)
 
-        driver = f'''
+        driver = '''
 import sys, json, inspect, traceback
 
 def _parse_input(raw):
@@ -4108,11 +4307,28 @@ if __name__ == "__main__":
         sig = inspect.signature({target_func})
         params = list(sig.parameters)
 
-        # ---------- STRICT & DETERMINISTIC DISPATCH ----------
-        if len(params) == 0:
+        # 🔹 NEW: invocation-aware dispatch
+        call_args = None
+        call_kwargs = None
+
+        if isinstance(input_data, dict) and "__call__" in input_data:
+            meta = input_data.get("__call__", {})
+            call_args = meta.get("args", [])
+            call_kwargs = meta.get("kwargs", {})
+            input_data = input_data.get("stdin")
+
+        # ---------- DISPATCH ----------
+        if call_args is not None or call_kwargs is not None:
+            call_args = call_args or []
+            call_kwargs = call_kwargs or {}
+            result = {target_func}(input_data, *call_args, **call_kwargs)
+
+        elif len(params) == 0:
             result = {target_func}()
+
         elif len(params) == 1:
             result = {target_func}(input_data)
+
         else:
             if not isinstance(input_data, list):
                 raise ValueError("Expected list input for multiple parameters")
