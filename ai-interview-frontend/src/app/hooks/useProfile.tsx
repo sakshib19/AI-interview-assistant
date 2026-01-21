@@ -17,6 +17,9 @@ export type InterviewSession = {
   status?: string;
   // -------------------------------
 
+finalVerdict?: "hire" | "reject" | "maybe" | "pending";
+decisionConfidence?: number;
+
   rounds: {
     screening?: {
       averageScore: number | null;

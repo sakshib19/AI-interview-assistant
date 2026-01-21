@@ -41,6 +41,7 @@ export type SessionDetail = {
   finalVerdict: "Hire" | "Reject" | "Pending";
   confidence: number;
   duration: number;
+  recommendedRole?: string | null;
   totalQuestions: number;
   violationCount: number;
   grayZoneCount: number; // <--- ADDED THIS FIELD
@@ -114,10 +115,18 @@ export default function ProfilePage() {
     
     return {
         sessionId: currentSession.sessionId,
-        finalVerdict: (rawSession.violationCount || 0) > 10 ? "Reject" : "Hire",
-        confidence: 85,
+        finalVerdict:
+          rawSession.finalVerdict === "hire"
+            ? "Hire"
+            : rawSession.finalVerdict === "reject"
+            ? "Reject"
+            : "Pending",
+
+        confidence: rawSession.decisionConfidence || 0,
         duration: 45,
         totalQuestions: rawSession.qaIds?.length || 0,
+
+        recommendedRole: rawSession.recommendedRole || null,
         
         violationCount: rawSession.violationCount || 0,
         grayZoneCount: 0, // <--- INITIALIZED HERE (Your backend currently doesn't send this, so defaulting to 0)
