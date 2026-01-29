@@ -650,56 +650,59 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
 
   return (
     <div 
-      className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+      className={`rounded-2xl border transition-all duration-300 overflow-hidden backdrop-blur-md ${
         isDebugging 
-          ? "bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]" // Dark Amber for Debugging
-          : "bg-white/5 border-white/10 hover:border-white/20 shadow-lg" 
+          ? "bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]" // Glowing Amber for Debugging
+          : "bg-neutral-900/40 border-white/10 hover:border-white/20 shadow-xl" // Dark Glass for normal
       }`}
     >
       <div 
-        className="p-6 cursor-pointer select-none hover:bg-white/5 transition-colors"
+        className="p-6 cursor-pointer select-none hover:bg-white/5 transition-colors group"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex gap-5 items-start">
           {/* Question Number / Icon Box */}
-          <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg shadow-lg ${
+          <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg shadow-lg border transition-transform group-hover:scale-105 ${
             isDebugging 
-              ? "bg-amber-500 text-black shadow-amber-500/20" 
-              : "bg-[#cbe557] text-neutral-900 shadow-[#cbe557]/20"
+              ? "bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-amber-900/20" 
+              : "bg-[#cbe557] text-neutral-950 border-[#cbe557] shadow-[#cbe557]/20" // Lime Accent
           }`}>
             {isDebugging ? <Bug size={24} /> : `Q${idx + 1}`}
           </div>
 
           <div className="flex-1">
-            <div className="font-bold text-white text-xl leading-tight">
+            {/* Header Text - White for dark mode */}
+            <div className="font-bold text-white text-xl leading-tight group-hover:text-[#cbe557] transition-colors">
               {h.q?.questionText || "Question text missing"}
             </div>
             
             {/* Debugging Badge */}
             {isDebugging && (
-               <span className="inline-flex items-center mt-3 text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-900/30 px-3 py-1 rounded-lg border border-amber-500/30">
+               <span className="inline-flex items-center mt-3 text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20 shadow-sm">
                  <Bug size={12} className="mr-1.5" /> Debugging Task
                </span>
             )}
           </div>
 
-          <div className="text-neutral-500 shrink-0">
-            {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+          <div className="text-neutral-500 shrink-0 transition-transform duration-300">
+            {isExpanded ? <ChevronUp size={24} className="text-[#cbe557]" /> : <ChevronDown size={24} />}
           </div>
         </div>
       </div>
 
       {isExpanded && (
-        <div className="px-6 pb-6 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="px-6 pb-6 space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
           
-          {/* User Answer Area - Terminal Style */}
-          <div className="bg-black/40 p-5 rounded-xl border border-white/10 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-[#cbe557]/50"></div>
+          {/* User Answer Area - Dark Terminal Style */}
+          <div className="bg-black/60 p-5 rounded-xl border border-white/10 relative overflow-hidden shadow-inner group/terminal">
+            {/* Aesthetic Side Bar */}
+            <div className="absolute top-0 left-0 w-1 h-full bg-[#cbe557]/50 group-hover/terminal:bg-[#cbe557] transition-colors"></div>
+            
             <div className="flex items-center gap-2 mb-3">
               <Code size={16} className="text-[#cbe557]" />
               <span className="text-xs font-black text-neutral-400 uppercase tracking-wider">Your Answer</span>
             </div>
-            <div className="text-neutral-300 font-mono text-sm leading-relaxed whitespace-pre-wrap">
+            <div className="text-neutral-300 font-mono text-sm leading-relaxed whitespace-pre-wrap selection:bg-[#cbe557] selection:text-black">
               {String(h.a || "")}
             </div>
           </div>
@@ -716,13 +719,13 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
             </div>
           )}
 
-          {/* AI Analysis Results */}
+          {/* AI Analysis Results Container */}
           {h.result && (
             <div className="space-y-5">
-              <div className="flex items-center gap-4 flex-wrap p-4 bg-white/5 rounded-xl border border-white/10">
+              {/* Score & Verdict Row */}
+              <div className="flex items-center gap-4 flex-wrap p-4 bg-white/5 rounded-xl border border-white/10 shadow-sm backdrop-blur-sm">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-neutral-400 font-black uppercase tracking-wider">Score</span>
-                  {/* Ensure renderScoreBadge returns dark-mode compatible classes or wrap it */}
                   <div className="scale-110 origin-left">
                     {renderScoreBadge(h.result.overall_score)}
                   </div>
@@ -730,8 +733,9 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
                 
                 {h.result.verdict && (
                   <div className="flex items-center gap-3">
+                    <div className="h-4 w-px bg-white/10 mx-2"></div>
                     <span className="text-xs text-neutral-400 font-black uppercase tracking-wider">Verdict</span>
-                    <span className={`text-sm font-black px-4 py-2 rounded-xl uppercase tracking-wider border backdrop-blur-md ${
+                    <span className={`text-sm font-black px-4 py-1.5 rounded-lg uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)] ${
                       h.result.verdict === "strong" || h.result.verdict === "exceptional" 
                         ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
                       h.result.verdict === "acceptable" 
@@ -746,20 +750,27 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
 
               {/* Complexity Feedback (for code questions) */}
               {h.result.complexity_analysis && (
-                <ComplexityFeedback analysis={h.result.complexity_analysis} />
+                <div className="text-neutral-200">
+                  <ComplexityFeedback analysis={h.result.complexity_analysis} />
+                </div>
               )}
 
               {/* Technical Diagnosis */}
               <StructuredFeedback diagnosis={h.result.technical_diagnosis} />
 
-              {/* Improvement / Feedback Text - Lime Theme */}
+              {/* Improvement / Feedback Text - Dark Mode Lime Theme */}
               {(!h.result.technical_diagnosis?.win && !h.result.technical_diagnosis?.gap?.issue && h.result.improvement) && (
-                <div className="bg-[#cbe557]/5 p-5 rounded-xl border-l-4 border-[#cbe557]">
+                <div className="bg-[#cbe557]/5 p-5 rounded-xl border-l-4 border-[#cbe557] relative overflow-hidden">
+                  {/* Subtle Background Glow */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#cbe557]/5 rounded-full blur-2xl -z-10"></div>
+                  
                   <div className="flex items-start gap-3">
-                    <Lightbulb size={18} className="text-[#cbe557] mt-0.5" />
+                    <div className="p-2 bg-[#cbe557]/10 rounded-lg shrink-0">
+                      <Lightbulb size={18} className="text-[#cbe557]" />
+                    </div>
                     <div>
-                      <span className="font-bold text-white block mb-2">Feedback</span>
-                      <p className="text-neutral-300 leading-relaxed">{h.result.improvement}</p>
+                      <span className="font-bold text-white block mb-2 text-sm tracking-wide">AI Feedback</span>
+                      <p className="text-neutral-300 leading-relaxed text-sm">{h.result.improvement}</p>
                     </div>
                   </div>
                 </div>
@@ -767,19 +778,21 @@ const TranscriptCard = ({ h, idx, renderScoreBadge }: { h: any, idx: number, ren
               
               {/* Rationale */}
               {h.result.rationale && (
-                <div className="text-xs text-neutral-500 italic border-t border-white/10 pt-3 mt-2">
-                  <span className="font-bold text-neutral-400 not-italic mr-1">Rationale:</span>
-                  {h.result.rationale}
+                <div className="text-xs text-neutral-500 italic border-t border-white/10 pt-4 mt-2 flex gap-2">
+                  <span className="font-bold text-neutral-400 not-italic whitespace-nowrap">Rationale:</span>
+                  <span className="opacity-80">{h.result.rationale}</span>
                 </div>
               )}
 
               {/* Red Flags */}
               {h.result.red_flags_detected && h.result.red_flags_detected.length > 0 && (
-                <div className="bg-rose-950/30 p-5 rounded-xl border border-rose-500/30">
+                <div className="bg-rose-950/20 p-5 rounded-xl border border-rose-500/30 shadow-inner">
                   <div className="flex items-start gap-3">
-                    <AlertCircle size={18} className="text-rose-500 mt-0.5" />
+                    <div className="p-2 bg-rose-500/10 rounded-lg shrink-0">
+                        <AlertCircle size={18} className="text-rose-500" />
+                    </div>
                     <div>
-                      <span className="font-bold text-rose-400 block mb-2">Red Flags Detected</span>
+                      <span className="font-bold text-rose-400 block mb-2 text-sm tracking-wide">Red Flags Detected</span>
                       <p className="text-rose-300/90 text-sm">{h.result.red_flags_detected.join(", ")}</p>
                     </div>
                   </div>
@@ -2107,7 +2120,7 @@ const handleStart = useCallback(
       Answer submit handler (unchanged)
       ------------------------- */
 
-  const handleSubmitAnswer = async (e: React.FormEvent) => {
+const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     const isWhiteboard = currentQuestion?.expectedAnswerType === "system_design";
 
@@ -2121,14 +2134,12 @@ const handleStart = useCallback(
       if (excalidrawAPI && typeof excalidrawAPI.getSceneElements === "function") {
         const allElements = excalidrawAPI.getSceneElements();
         finalWhiteboardData = allElements.filter((el: any) => !el.isDeleted);
-        
+
         // 2. 📸 CAPTURE IMAGE SNAPSHOT
         if (finalWhiteboardData.length > 0) {
           try {
             console.log("📸 Generating whiteboard snapshot...");
-            
-            // 👇 FIX: Dynamic Import here!
-            // This prevents the "window is not defined" error on the server
+            // Dynamic Import
             const { exportToBlob } = await import("@excalidraw/excalidraw");
 
             const blob = await exportToBlob({
@@ -2157,20 +2168,16 @@ const handleStart = useCallback(
       }
     }
 
-    console.log("🚀 Submitting Payload:", {
-      question_type: isWhiteboard ? "system_design" : "text",
-      whiteboard_count: finalWhiteboardData.length,
-      has_snapshot: !!whiteboardImageBase64
-    });
-if (currentQuestion?.expectedAnswerType === "code") {
-        captureSnapshot('auto');
+    if (currentQuestion?.expectedAnswerType === "code") {
+      captureSnapshot('auto');
     }
+
     const payload: any = {
       answer,
       question_type: "text",
       code_execution_result: executionResult,
       whiteboard_elements: finalWhiteboardData,
-      whiteboard_snapshot: whiteboardImageBase64, 
+      whiteboard_snapshot: whiteboardImageBase64,
       user_time_complexity: timeComplexity,
       user_space_complexity: spaceComplexity,
       playback_history: playbackHistory.current
@@ -2184,7 +2191,8 @@ if (currentQuestion?.expectedAnswerType === "code") {
 
     try {
       const result = await submitAnswer(payload, currentQuestion.questionId);
-      
+
+      // Reset State
       setAnswer("");
       setCodeOutput(null);
       setExecutionResult(null);
@@ -2194,55 +2202,63 @@ if (currentQuestion?.expectedAnswerType === "code") {
       if (excalidrawAPI) {
         excalidrawAPI.resetScene();
       }
-// 1. Handle Diagnosis (Instant Feedback)
+
+      // 1. Handle Diagnosis (Instant Feedback)
       if (result?.technical_diagnosis) {
         setLastDiagnosis(result.technical_diagnosis);
       } else {
         setLastDiagnosis(null);
       }
 
-      // 2. 🚨 CHECK FOR ELIMINATION / ENDED FIRST 🚨
-      // If eliminated, the hook sets stage="done". We must stop here.
+      // -----------------------------------------------------------------------
+      // 🚨 CRITICAL FIX START: Explicitly End Interview if Backend says so
+      // -----------------------------------------------------------------------
       if (result?.eliminated || result?.ended) {
         console.log("🛑 Interview Ended via Answer Response");
-        // Force a fetch of the report after a short delay to allow DB save
-        setTimeout(() => fetchFinalReport(), 2000); 
-        return; 
+        
+        // IMPORTANT: We must call endInterview to update the local 'stage' state to 'done'
+        if (endInterview) {
+            await endInterview(
+                result?.elimination_reason || "Interview Completed Successfully", 
+                false // isViolation = false
+            );
+        }
+
+        // Force a fetch of the report after a short delay
+        setTimeout(() => fetchFinalReport(), 2000);
+        return;
       }
+      // -----------------------------------------------------------------------
+      // 🚨 CRITICAL FIX END
+      // -----------------------------------------------------------------------
 
       // 3. Handle Round Transition
       const newRoundData = result?.round_info || result?.metadata;
-      
-      // ✅ FIX: Normalize strings for comparison to catch "Screening" vs "screening"
+
       const prevRound = (currentRound || "").toLowerCase().trim();
       const nextRoundRaw = (newRoundData?.current || newRoundData?.current_round || "").trim();
       const nextRound = nextRoundRaw.toLowerCase();
 
-      // 🔍 Debug Log: Check your console to see exactly what is being compared
       console.log(`🔄 Round Transition Check: '${prevRound}' -> '${nextRound}'`);
 
-      const isRoundChange = 
-          nextRound && 
-          nextRound !== prevRound && 
-          nextRound !== "complete" && 
-          nextRound !== "completed";
+      const isRoundChange =
+        nextRound &&
+        nextRound !== prevRound &&
+        nextRound !== "complete" &&
+        nextRound !== "completed";
 
       if (isRoundChange) {
         console.log("🚀 TRANSITION DETECTED: Opening Modal");
-        
-        setNextRoundName(nextRoundRaw); // Store the nice looking name (e.g. "Technical")
+
+        setNextRoundName(nextRoundRaw);
         setRoundSummary(null);
         setShowRoundModal(true);
-        
-        // Fetch feedback for the round we just FINISHED (the currentRound state)
-        fetchRoundFeedback(currentRound); 
-        
-        // Update progress bars in background, but DON'T change currentRound state yet
+
+        fetchRoundFeedback(currentRound);
+
         if (newRoundData.progress) setRoundProgress(newRoundData.progress);
-        
-        // 🛑 RETURN EARLY: This prevents the UI from switching rounds immediately.
-        // The switch happens when the user clicks the button in the modal.
-        return; 
+
+        return;
       }
 
       // 4. Normal Question Update (No Round Change)
@@ -2255,7 +2271,6 @@ if (currentQuestion?.expectedAnswerType === "code") {
       console.error("Submit error:", e);
     }
   };
-
   // Helper for the modal button
   const handleNextRound = () => {
       setShowRoundModal(false);
@@ -4724,293 +4739,316 @@ useEffect(() => {
 
         {/* FINAL RESULTS (unchanged) */}
         {/* FINAL RESULTS - UPDATED */}
-        {stage === "done" && (
-          <div className="max-w-5xl mx-auto animate-in fade-in zoom-in duration-500">
-<div className="p-6 md:p-8 rounded-2xl bg-white border-2 border-slate-200 shadow-2xl">
+{stage === "done" && (
+          <div className="max-w-6xl mx-auto animate-in fade-in zoom-in duration-700 pb-20">
+            
+            {/* Main Result Card - Dark Glassmorphism */}
+            <div className="relative overflow-hidden rounded-3xl bg-neutral-900/80 border border-white/10 shadow-2xl backdrop-blur-xl">
               
-              {/* Header */}
-              <div className="text-center mb-10">
-                <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 text-white mb-6 shadow-xl ring-4 ring-green-100">
-                  <Award size={48} />
+              {/* Animated Background Glow */}
+              <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none"></div>
+              <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#cbe557]/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+              <div className="relative z-10 p-8 md:p-12">
+                
+                {/* Header Section */}
+                <div className="text-center mb-12">
+                  <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-[#cbe557] to-emerald-600 text-black mb-6 shadow-[0_0_40px_rgba(203,229,87,0.3)] ring-4 ring-[#cbe557]/20">
+                    <Award size={48} strokeWidth={2.5} />
+                  </div>
+                  <h2 className="text-4xl md:text-5xl font-black text-white mb-3 tracking-tight">
+                    Assessment Complete
+                  </h2>
+                  <p className="text-neutral-400 text-lg font-medium">
+                    {finalReport?.meta?.duration_minutes 
+                      ? `Completed in ${finalReport.meta.duration_minutes} minutes` 
+                      : "Here is your comprehensive performance analysis"}
+                  </p>
                 </div>
-                <h2 className="text-4xl font-black text-slate-900 mb-2">
-                  Assessment Complete
-                </h2>
-                <p className="text-slate-500 text-lg font-medium">
-                  {finalReport?.meta?.duration_minutes 
-                    ? `Completed in ${finalReport.meta.duration_minutes} minutes` 
-                    : "Here is your comprehensive performance analysis"}
-                </p>
-              </div>
 
-              {/* 1. LOADING STATE FOR REPORT */}
- {loadingFinalReport ? (
-  <div className="py-20 text-center border-2 border-dashed border-indigo-100 rounded-2xl bg-indigo-50/30">
-    <Loader2 className="animate-spin text-indigo-600 w-12 h-12 mx-auto mb-4" />
-    <h3 className="text-xl font-bold text-slate-800">Compiling Final Report...</h3>
-    <p className="text-slate-500 mt-2 mb-6">AI is aggregating your round performance and generating detailed insights.</p>
-    
-    {/* Manual Retry Button */}
-    <button 
-      onClick={() => fetchFinalReport()}
-      className="px-6 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-50 transition-colors shadow-sm"
-    >
-      Click here if this takes too long
-    </button>
-  </div>
-              ) : (
-                <>
-                  {/* 2. TOP METRICS CARDS */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-                    {/* Verdict Card */}
-                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 rounded-2xl border border-indigo-100 flex flex-col items-center justify-center text-center shadow-sm">
-                      <span className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-4">Final Verdict</span>
-                      <div className="transform scale-110">
-                        {renderVerdictBadge(finalReport?.overall?.verdict || finalDecision?.verdict)}
-                      </div>
-                      {finalReport?.overall?.decision_reason && (
-                        <p className="mt-4 text-sm text-slate-500 italic max-w-sm">
-                          "{finalReport.overall.decision_reason}"
-                        </p>
-                      )}
-                    </div>
-                    
-                    {/* Score Card */}
-                    <div className="bg-white p-8 rounded-2xl border-2 border-slate-100 flex flex-col items-center justify-center text-center shadow-sm relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-4 opacity-10">
-                        <Target size={100} />
-                      </div>
-                      <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Overall Technical Score</span>
-                      <div className="text-7xl font-black text-slate-900 mb-2 tracking-tighter">
-                        {Math.round((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 100)}%
-                      </div>
-                      <div className="flex gap-1 mt-2">
-                        {/* Star Rating Visualization using Sparkles as Stars */}
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Sparkles 
-                            key={star} 
-                            size={24} 
-                            className={`${
-                              star <= Math.round(((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 5)) 
-                                ? "text-amber-400 fill-amber-400" 
-                                : "text-slate-200"
-                            }`} 
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. EXECUTIVE SUMMARY */}
-               <div className="mb-12 bg-slate-50 p-8 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
-                    <h3 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                      <FileText size={24} className="text-indigo-600" />
-                      Executive Summary
-                    </h3>
-                    <p className="text-slate-700 text-lg leading-relaxed font-medium">
-                      {/* 👇 UPDATED LINE: Check finalDecision.feedback_summary before reason */}
-                      {finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason || "Analysis pending..."}
+                {/* 1. LOADING STATE FOR REPORT */}
+                {loadingFinalReport ? (
+                  <div className="py-24 text-center border-2 border-dashed border-white/10 rounded-3xl bg-white/5 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-shimmer"></div>
+                    <Loader2 className="animate-spin text-[#cbe557] w-14 h-14 mx-auto mb-6" />
+                    <h3 className="text-2xl font-bold text-white mb-2">Compiling AI Report...</h3>
+                    <p className="text-neutral-400 max-w-md mx-auto mb-8">
+                      Analyzing code quality, time complexity, and verbal responses to generate actionable insights.
                     </p>
+                    
+                    <button 
+                      onClick={() => fetchFinalReport()}
+                      className="px-6 py-2 bg-neutral-800 border border-white/10 text-neutral-300 rounded-lg text-sm font-bold hover:bg-neutral-700 hover:text-white transition-colors"
+                    >
+                      Click here if this takes too long
+                    </button>
                   </div>
-
-                  {/* 4. ROUND-BY-ROUND PERFORMANCE (NEW) */}
-                  {finalReport?.rounds && Object.keys(finalReport.rounds).length > 0 && (
-                    <div className="mb-12 animate-in fade-in slide-in-from-bottom-4">
-                      <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                        <Layout size={24} className="text-slate-400" />
-                        Round Performance
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {Object.entries(finalReport.rounds).map(([name, data]: [string, any]) => (
-                          <div key={name} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-                            <div className="flex justify-between items-start mb-4">
-                              <span className="capitalize font-bold text-slate-800 text-lg">{name}</span>
-                              <span className={`text-sm font-black px-3 py-1 rounded-full ${
-                                data.score > 0.7 ? 'bg-emerald-100 text-emerald-700' : 
-                                data.score > 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
-                              }`}>
-                                {Math.round(data.score * 100)}%
-                              </span>
-                            </div>
-                            <p className="text-sm text-slate-600 line-clamp-4 leading-relaxed mb-4 min-h-[5rem]">
-                              {data.feedback}
-                            </p>
-                            {data.weaknesses?.length > 0 && (
-                              <div className="pt-4 border-t border-slate-100">
-                                <div className="text-xs font-bold text-rose-600 uppercase mb-1 flex items-center gap-1">
-                                  <TrendingDown size={12} /> Key Weakness
-                                </div>
-                                <div className="text-xs text-slate-700 font-medium truncate">
-                                  {data.weaknesses[0]}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 5. DETAILED STRENGTHS & WEAKNESSES */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                    {/* Left: Strengths */}
-                    <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100">
-                      <h4 className="font-bold text-emerald-800 mb-6 flex items-center gap-2 text-lg">
-                        <div className="p-2 bg-emerald-100 rounded-lg">
-                          <TrendingUp size={20} className="text-emerald-600" /> 
+                ) : (
+                  <>
+                    {/* 2. TOP METRICS CARDS */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+                      {/* Verdict Card */}
+                      <div className="relative group overflow-hidden bg-gradient-to-br from-white/5 to-white/0 p-8 rounded-3xl border border-white/10 flex flex-col items-center justify-center text-center hover:border-[#cbe557]/30 transition-all duration-500">
+                        <div className="absolute inset-0 bg-[#cbe557]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <span className="text-xs font-black text-neutral-500 uppercase tracking-[0.2em] mb-4">Final Verdict</span>
+                        
+                        <div className="transform scale-125 drop-shadow-2xl">
+                          {renderVerdictBadge(finalReport?.overall?.verdict || finalDecision?.verdict)}
                         </div>
-                        Key Strengths
-                      </h4>
-                      <div className="space-y-3">
-                        {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).map((s: string, i: number) => (
-                          <div key={i} className="flex gap-3 p-4 bg-white rounded-xl border border-emerald-100 shadow-sm">
-                            <CheckCircle size={20} className="text-emerald-500 shrink-0 mt-0.5" />
-                            <span className="text-sm text-emerald-900 font-semibold">{s}</span>
-                          </div>
-                        ))}
-                        {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).length === 0 && (
-                          <div className="text-sm text-slate-400 italic px-4">None detected yet.</div>
+                        
+                        {finalReport?.overall?.decision_reason && (
+                          <p className="mt-6 text-sm text-neutral-400 italic max-w-sm border-t border-white/10 pt-4">
+                            "{finalReport.overall.decision_reason}"
+                          </p>
                         )}
                       </div>
+                      
+                      {/* Score Card */}
+                      <div className="relative group overflow-hidden bg-black/40 p-8 rounded-3xl border border-white/10 flex flex-col items-center justify-center text-center">
+                        <div className="absolute top-0 right-0 p-6 opacity-5">
+                          <Target size={120} className="text-white" />
+                        </div>
+                        
+                        <span className="text-xs font-black text-neutral-500 uppercase tracking-[0.2em] mb-2">Technical Score</span>
+                        
+                        <div className="relative z-10">
+                          <div className="text-8xl font-black text-white tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                            {Math.round((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 100)}<span className="text-4xl text-neutral-600">%</span>
+                          </div>
+                        </div>
+
+                        {/* Star Rating Visualization */}
+                        <div className="flex gap-2 mt-4 relative z-10 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Sparkles 
+                              key={star} 
+                              size={20} 
+                              className={`${
+                                star <= Math.round(((finalReport?.overall?.score || performanceMetrics?.average_score || 0) * 5)) 
+                                  ? "text-[#cbe557] fill-[#cbe557] drop-shadow-[0_0_8px_#cbe557]" 
+                                  : "text-neutral-700"
+                              }`} 
+                            />
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Right: Weaknesses */}
-                    <div className="bg-rose-50/30 p-6 rounded-2xl border border-rose-100">
-                      <h4 className="font-bold text-rose-800 mb-6 flex items-center gap-2 text-lg">
-                        <div className="p-2 bg-rose-100 rounded-lg">
-                          <AlertCircle size={20} className="text-rose-600" />
+                    {/* 3. EXECUTIVE SUMMARY */}
+                    <div className="mb-12 bg-white/5 p-8 md:p-10 rounded-3xl border-l-4 border-[#cbe557] backdrop-blur-md relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-6 opacity-10">
+                        <FileText size={100} className="text-white" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+                        <span className="p-2 bg-[#cbe557] rounded-lg text-black">
+                          <FileText size={24} />
+                        </span>
+                        Executive Summary
+                      </h3>
+                      <p className="text-neutral-300 text-lg leading-relaxed font-light">
+                        {finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason || "Analysis pending..."}
+                      </p>
+                    </div>
+
+                    {/* 4. ROUND-BY-ROUND PERFORMANCE */}
+                    {finalReport?.rounds && Object.keys(finalReport.rounds).length > 0 && (
+                      <div className="mb-12 animate-in fade-in slide-in-from-bottom-4">
+                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
+                          <Layout size={24} className="text-[#cbe557]" />
+                          Round Breakdown
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {Object.entries(finalReport.rounds).map(([name, data]: [string, any]) => (
+                            <div key={name} className="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-white/20 transition-all hover:-translate-y-1 group">
+                              <div className="flex justify-between items-start mb-4">
+                                <span className="capitalize font-bold text-white text-lg tracking-wide">{name}</span>
+                                <span className={`text-xs font-black px-3 py-1.5 rounded-lg border ${
+                                  data.score > 0.7 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                                  data.score > 0.4 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                }`}>
+                                  {Math.round(data.score * 100)}%
+                                </span>
+                              </div>
+                              <p className="text-sm text-neutral-400 line-clamp-4 leading-relaxed mb-4 min-h-[5rem] group-hover:text-neutral-300 transition-colors">
+                                {data.feedback}
+                              </p>
+                              {data.weaknesses?.length > 0 && (
+                                <div className="pt-4 border-t border-white/5">
+                                  <div className="text-[10px] font-bold text-rose-400 uppercase mb-1 flex items-center gap-1">
+                                    <TrendingDown size={10} /> Key Weakness
+                                  </div>
+                                  <div className="text-xs text-neutral-300 truncate">
+                                    {data.weaknesses[0]}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                        Areas for Growth
-                      </h4>
-                      <div className="space-y-3">
-                        {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).map((w: string, i: number) => (
-                          <div key={i} className="flex gap-3 p-4 bg-white rounded-xl border border-rose-100 shadow-sm">
-                            <Target size={20} className="text-rose-500 shrink-0 mt-0.5" />
-                            <span className="text-sm text-rose-900 font-semibold">{w}</span>
+                      </div>
+                    )}
+
+                    {/* 5. DETAILED STRENGTHS & WEAKNESSES */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                      {/* Left: Strengths */}
+                      <div className="bg-gradient-to-b from-emerald-900/20 to-transparent p-8 rounded-3xl border border-emerald-500/20">
+                        <h4 className="font-bold text-emerald-400 mb-6 flex items-center gap-3 text-lg">
+                          <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                            <TrendingUp size={20} /> 
                           </div>
-                        ))}
-                       {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).length === 0 && (
-  <div className="text-sm text-slate-400 italic px-4">
-    {(finalReport?.overall?.verdict || finalDecision?.verdict) === "reject"
-      ? "Specific weaknesses not listed due to early termination."
-      : "None detected. Great job!"}
-  </div>
-)}
+                          Key Strengths
+                        </h4>
+                        <div className="space-y-4">
+                          {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).map((s: string, i: number) => (
+                            <div key={i} className="flex gap-4 p-4 bg-black/40 rounded-xl border border-emerald-500/10 hover:border-emerald-500/30 transition-colors">
+                              <CheckCircle size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                              <span className="text-sm text-neutral-200 font-medium leading-relaxed">{s}</span>
+                            </div>
+                          ))}
+                          {(finalReport?.details?.key_strengths || finalDecision?.key_strengths || []).length === 0 && (
+                            <div className="text-sm text-neutral-500 italic px-4">None detected yet.</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Weaknesses */}
+                      <div className="bg-gradient-to-b from-rose-900/20 to-transparent p-8 rounded-3xl border border-rose-500/20">
+                        <h4 className="font-bold text-rose-400 mb-6 flex items-center gap-3 text-lg">
+                          <div className="p-2 bg-rose-500/10 rounded-xl border border-rose-500/20">
+                            <AlertCircle size={20} />
+                          </div>
+                          Areas for Growth
+                        </h4>
+                        <div className="space-y-4">
+                          {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).map((w: string, i: number) => (
+                            <div key={i} className="flex gap-4 p-4 bg-black/40 rounded-xl border border-rose-500/10 hover:border-rose-500/30 transition-colors">
+                              <Target size={20} className="text-rose-500 shrink-0 mt-0.5" />
+                              <span className="text-sm text-neutral-200 font-medium leading-relaxed">{w}</span>
+                            </div>
+                          ))}
+                          {(finalReport?.details?.areas_for_improvement || finalDecision?.critical_weaknesses || []).length === 0 && (
+                            <div className="text-sm text-neutral-500 italic px-4">
+                              {(finalReport?.overall?.verdict || finalDecision?.verdict) === "reject"
+                                ? "Specific weaknesses not listed due to early termination."
+                                : "None detected. Great job!"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* 6. RECOMMENDED ROLE */}
+                {(finalReport?.details?.recommended_role || finalDecision?.recommended_role) && (
+                  <div className="mb-12 text-center">
+                    <div className="inline-flex items-center gap-3 bg-white/5 px-8 py-3 rounded-full border border-white/10 backdrop-blur-md">
+                      <span className="text-neutral-400 text-sm font-bold uppercase tracking-wider">Recommended Role</span>
+                      <div className="h-4 w-px bg-white/20"></div>
+                      <span className="text-white text-base font-black tracking-wide">
+                        {finalReport?.details?.recommended_role || finalDecision?.recommended_role}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. ACTION BUTTONS - Modern Dark Style */}
+                <div className="flex flex-col md:flex-row justify-center gap-4 mt-8 pt-8 border-t border-white/10 flex-wrap">
+                  <button
+                    onClick={() => setShowReport(!showReport)}
+                    className="px-8 py-4 bg-neutral-800 text-white rounded-2xl hover:bg-neutral-700 font-bold transition-all shadow-lg hover:-translate-y-1 border border-white/5"
+                  >
+                    {showReport ? "Hide Transcript" : "View Transcript"}
+                  </button>
+
+                  <button
+                    onClick={() => speakText(finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason)}
+                    className="px-8 py-4 bg-neutral-800 text-[#cbe557] rounded-2xl hover:bg-neutral-700 font-bold transition-all shadow-lg hover:-translate-y-1 border border-white/5 flex items-center justify-center gap-3"
+                  >
+                    <Volume2 size={20} /> Listen Report
+                  </button>
+                  
+                  <button
+                    onClick={generatePDF}
+                    className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl shadow-lg shadow-emerald-900/30 hover:shadow-emerald-500/20 hover:-translate-y-1 transition-all font-bold flex items-center justify-center gap-3 border border-white/10"
+                  >
+                    <FileText size={20} /> Download PDF
+                  </button>
+
+                  {/* 🔥 NEW: Generate Roadmap Button */}
+                  <button
+                    onClick={fetchRoadmap}
+                    disabled={loadingRoadmap || !!roadmap}
+                    className={`px-8 py-4 rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-3 border border-white/10 hover:-translate-y-1 ${
+                      roadmap 
+                        ? "bg-neutral-800 text-neutral-500 cursor-default" 
+                        : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-900/30 hover:shadow-blue-500/20"
+                    }`}
+                  >
+                    {loadingRoadmap ? <Loader2 className="animate-spin" size={20} /> : <Map size={20} />}
+                    {roadmap ? "Roadmap Ready" : "Generate Roadmap"}
+                  </button>
+
+                  <button
+                    onClick={() => setConfirmRestartVisible(true)}
+                    className="px-8 py-4 bg-gradient-to-r from-[#cbe557] to-[#a3b846] text-black rounded-2xl hover:shadow-[#cbe557]/30 hover:-translate-y-1 font-black transition-all shadow-lg border border-white/20"
+                  >
+                    Start New Interview
+                  </button>
+                </div>
+
+                {/* 8. ROADMAP DISPLAY */}
+                {roadmap && (
+                  <div className="mt-16 w-full animate-in fade-in slide-in-from-bottom-6 duration-700">
+                     <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
+                  </div>
+                )}
+
+                {/* 9. CONFIRM RESTART MODAL */}
+                {confirmRestartVisible && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+                    <div className="max-w-md w-full bg-neutral-900 rounded-3xl p-8 shadow-2xl border border-white/10 animate-in zoom-in">
+                      <h4 className="font-bold text-2xl mb-3 text-white">Start a new interview?</h4>
+                      <p className="text-neutral-400 mb-8 leading-relaxed">
+                        This will clear your current progress and results. Are you sure you want to proceed?
+                      </p>
+                      <div className="flex gap-4 justify-end">
+                        <button
+                          className="px-6 py-3 rounded-xl border border-white/10 text-neutral-300 font-bold hover:bg-white/5 transition-colors"
+                          onClick={() => setConfirmRestartVisible(false)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="px-6 py-3 rounded-xl bg-[#cbe557] text-black font-bold hover:bg-[#b5cc4e] shadow-lg shadow-[#cbe557]/20 transition-all"
+                          onClick={() => {
+                            localStorage.removeItem("active_interview_session");
+                            window.location.reload();
+                          }}
+                        >
+                          Yes, Start New
+                        </button>
                       </div>
                     </div>
                   </div>
-                </>
-              )}
+                )}
 
-              {/* 6. RECOMMENDED ROLE */}
-              {(finalReport?.details?.recommended_role || finalDecision?.recommended_role) && (
-                <div className="mb-10 text-center">
-                  <div className="inline-block bg-slate-900 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
-                    Recommended Role: {finalReport?.details?.recommended_role || finalDecision?.recommended_role}
-                  </div>
-                </div>
-              )}
-
-{/* 7. ACTION BUTTONS */}
-              <div className="flex flex-col md:flex-row justify-center gap-4 mt-8 pt-8 border-t border-slate-100 flex-wrap">
-                <button
-                  onClick={() => setShowReport(!showReport)}
-                  className="px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition-all shadow-sm hover:shadow-md"
-                >
-                  {showReport ? "Hide Transcript" : "View Full Transcript"}
-                </button>
-
-                <button
-onClick={() => speakText(finalReport?.overall?.feedback_summary || finalDecision?.feedback_summary || finalDecision?.reason)}
-                  className="px-6 py-3 bg-white border-2 border-indigo-100 text-indigo-600 rounded-xl hover:bg-indigo-50 font-bold transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2"
-                >
-                  <Volume2 size={20} /> Listen to Report
-                </button>
-                
-                <button
-                  onClick={generatePDF}
-                  className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl shadow-lg hover:shadow-emerald-200 hover:-translate-y-1 transition-all font-bold flex items-center justify-center gap-2"
-                >
-                  <FileText size={20} /> Download PDF
-                </button>
-
-                {/* 🔥 NEW: Generate Roadmap Button */}
-                <button
-                  onClick={fetchRoadmap}
-                  disabled={loadingRoadmap || !!roadmap}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${
-                    roadmap 
-                      ? "bg-slate-100 text-slate-400 cursor-default" 
-                      : "bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:shadow-blue-200 hover:-translate-y-1"
-                  }`}
-                >
-                  {loadingRoadmap ? (
-                    <Loader2 className="animate-spin" size={20} />
-                  ) : (
-                    <Map size={20} />
-                  )}
-                  {roadmap ? "Roadmap Generated" : "Generate 4-Week Roadmap"}
-                </button>
-
-                <button
-                  onClick={() => setConfirmRestartVisible(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-indigo-200 hover:-translate-y-1 font-bold transition-all shadow-lg"
-                >
-                  Start New Interview
-                </button>
-              </div>
-
-              {/* 🔥 8. ROADMAP DISPLAY (Added Here) */}
-              {roadmap && (
-                <div className="mt-12 w-full animate-in fade-in slide-in-from-bottom-6 duration-700">
-                   <RoadmapDisplay plan={roadmap} title={roadmapTitle} />
-                </div>
-              )}
-
-              {/* 9. CONFIRM RESTART MODAL */}
-              {confirmRestartVisible && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                  <div className="max-w-md w-full bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 animate-in zoom-in">
-                    <h4 className="font-bold text-xl mb-2 text-slate-900">Start a new interview?</h4>
-                    <p className="text-slate-600 mb-6">
-                      This will clear your current progress and results. Are you sure you want to proceed?
-                    </p>
-                    <div className="flex gap-3 justify-end">
-                      <button
-                        className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50"
-                        onClick={() => setConfirmRestartVisible(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-md"
-                        onClick={() => {
-                          localStorage.removeItem("active_interview_session");
-                          window.location.reload();
-                        }}
-                      >
-                        Yes, Start New
-                      </button>
+                {/* 10. FULL TRANSCRIPT */}
+                {showReport && (
+                  <div className="mt-16 pt-12 border-t border-white/10 space-y-8">
+                    <h3 className="font-black text-3xl text-white flex items-center gap-4">
+                      <div className="w-2 h-10 bg-[#cbe557] rounded-full shadow-[0_0_15px_#cbe557]"></div>
+                      Complete Transcript
+                    </h3>
+                    <div className="grid gap-8">
+                      {history.map((h, idx) => (
+                        <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
+                      ))}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* 9. FULL TRANSCRIPT (CONDITIONAL) */}
-              {showReport && (
-                <div className="mt-12 pt-10 border-t-2 border-slate-100 space-y-6">
-                  <h3 className="font-black text-2xl text-slate-900 flex items-center gap-3">
-                    <div className="w-1.5 h-8 bg-indigo-600 rounded-full"></div>
-                    Complete Transcript
-                  </h3>
-                  <div className="grid gap-6">
-                    {history.map((h, idx) => (
-                      <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
+              </div>
             </div>
           </div>
         )}

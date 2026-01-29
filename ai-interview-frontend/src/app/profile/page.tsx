@@ -1,39 +1,35 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useProfile, DashboardData } from "../hooks/useProfile";
 import { useAuth } from "../context/AuthContext";
+// Ensure these components handle their own internal sizing gracefully
 import SessionOverview from "./components/SessionOverview";
 import RoundWiseProgress from "./components/RoundWiseProgress";
 import IntegrityProctoringLog from "./components/IntegrityProctoringLog";
 import PerformanceInsights from "./components/PerformanceInsights";
 import ExportReports from "./components/ExportReports";
-import { ChevronDown, ChevronUp, Calendar, Clock, ChevronRight } from "lucide-react";
+import { 
+  ChevronDown, 
+  Clock, 
+  ChevronRight, 
+  Activity, 
+  LayoutDashboard,
+  Loader2,
+  AlertCircle,
+  User,
+  ShieldCheck,
+  Zap,
+  FileText
+} from "lucide-react";
 
-// --- TYPES ---
-
-export type ViolationData = {
-  id: string;
-  at: string;
-  type: string;
-  reason: string;
-  action?: string;
-};
-
+// --- TYPES (Unchanged) ---
 export type RoundData = {
   roundType: "screening" | "technical" | "behavioral";
   questionCount: number;
   averageScore: number;
   status: "Pass" | "Weak" | "Failed";
   transitionReason?: string;
-};
-
-export type PerformanceData = {
-  strongAreas: string[];
-  weakAreas: { skill: string; severity: "Low" | "Medium" | "High" }[];
-  consistency: number;
-  variance: number;
-  recommendations: string[];
 };
 
 export type SessionDetail = {
@@ -44,7 +40,7 @@ export type SessionDetail = {
   recommendedRole?: string | null;
   totalQuestions: number;
   violationCount: number;
-  grayZoneCount: number; // <--- ADDED THIS FIELD
+  grayZoneCount: number;
   startedAt: string;
   endedAt?: string;
   rounds: {
@@ -52,8 +48,8 @@ export type SessionDetail = {
     technical?: RoundData;
     behavioral?: RoundData;
   };
-  violations: ViolationData[];
-  performanceInsights?: PerformanceData;
+  violations: any[];
+  performanceInsights?: any;
 };
 
 export default function ProfilePage() {
@@ -65,19 +61,16 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
-
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["overview", "rounds", "integrity"])
   );
 
   const toggleSection = (section: string) => {
-    const newExpanded = new Set(expandedSections);
-    if (newExpanded.has(section)) {
-      newExpanded.delete(section);
-    } else {
-      newExpanded.add(section);
-    }
-    setExpandedSections(newExpanded);
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      newSet.has(section) ? newSet.delete(section) : newSet.add(section);
+      return newSet;
+    });
   };
 
   useEffect(() => {
@@ -101,6 +94,7 @@ export default function ProfilePage() {
 
     if (!currentSession || !currentSession.date) return null;
     
+    // ... Transformation logic matches previous version ...
     const transformRound = (round: any, roundType: "screening" | "technical" | "behavioral") => {
       if (!round || round.averageScore === null) return undefined;
       const score = round.averageScore;
@@ -115,26 +109,16 @@ export default function ProfilePage() {
     
     return {
         sessionId: currentSession.sessionId,
-        finalVerdict:
-          rawSession.finalVerdict === "hire"
-            ? "Hire"
-            : rawSession.finalVerdict === "reject"
-            ? "Reject"
-            : "Pending",
-
+        finalVerdict: rawSession.finalVerdict === "hire" ? "Hire" : rawSession.finalVerdict === "reject" ? "Reject" : "Pending",
         confidence: rawSession.decisionConfidence || 0,
-        duration: 45,
+        duration: 45, 
         totalQuestions: rawSession.qaIds?.length || 0,
-
         recommendedRole: rawSession.recommendedRole || null,
-        
         violationCount: rawSession.violationCount || 0,
-        grayZoneCount: 0, // <--- INITIALIZED HERE (Your backend currently doesn't send this, so defaulting to 0)
+        grayZoneCount: 0,
         violations: rawSession.events || [], 
-        
         startedAt: currentSession.date,
         endedAt: rawSession.endedAt || undefined,
-
         rounds: {
           screening: transformRound(currentSession.rounds?.screening, "screening"),
           technical: transformRound(currentSession.rounds?.technical, "technical"),
@@ -150,44 +134,91 @@ export default function ProfilePage() {
     } as SessionDetail;
   }, [data, selectedIndex]);
 
-  if (!token) return <p className="p-8 text-gray-300">Not logged in</p>;
-  if (loading) return <p className="p-8 text-gray-300 animate-pulse">Loading dashboard...</p>;
-  if (error || !data) return <p className="p-8 text-red-400">Error: {error || "No data available"}</p>;
+  // --- RENDER STATES ---
 
-  return (
-    <div className="min-h-screen bg-gray-900 text-white pb-20">
-      {/* Header */}
-      <div className="sticky top-0 z-50 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-indigo-400">Interview Performance Profile</h1>
-            <p className="text-sm text-gray-400 mt-1">Electronics & Instrumentation • NIT Rourkela</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="font-semibold">{data.user.name}</p>
-              <p className="text-xs text-indigo-300">{data.user.email}</p>
-            </div>
-            <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold">
-              {data.user.name?.[0]}
-            </div>
-          </div>
+  if (!token) return (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-neutral-400 gap-4">
+      <div className="p-4 rounded-full bg-neutral-900 border border-neutral-800">
+        <User size={32} className="text-neutral-500" />
+      </div>
+      <p className="font-medium tracking-tight">Please log in to view analytics.</p>
+    </div>
+  );
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center relative overflow-hidden font-sans">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
+        <div className="relative z-10 flex flex-col items-center gap-6">
+          <Loader2 className="animate-spin text-[#cbe557]" size={48} />
+          <p className="text-neutral-400 font-bold tracking-[0.2em] text-xs uppercase animate-pulse">Initializing System</p>
+        </div>
+    </div>
+  );
+
+  if (error || !data) return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6">
+      <div className="bg-red-500/5 backdrop-blur-md border border-red-500/20 p-8 rounded-3xl flex flex-col items-center gap-4 max-w-md text-center">
+        <AlertCircle size={32} className="text-red-500" />
+        <div>
+          <h3 className="text-lg font-bold text-red-200">Failed to Load Dashboard</h3>
+          <p className="text-sm text-red-400/60 mt-1">{error || "No data available"}</p>
         </div>
       </div>
+    </div>
+  );
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+  return (
+    <div className="min-h-screen bg-[#050505] text-white pb-20 relative font-sans selection:bg-[#cbe557] selection:text-black overflow-x-hidden">
+      
+      {/* ==================== BACKGROUND (Z-0) ==================== */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-10%] left-[20%] w-[600px] h-[600px] bg-[#cbe557]/[0.03] rounded-full blur-[120px] animate-pulse-slow"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-500/[0.03] rounded-full blur-[120px]" style={{animationDelay: '3s'}}></div>
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
+      </div>
+
+      {/* ==================== HEADER (Z-50) ==================== */}
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#050505]/90 backdrop-blur-2xl transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="h-10 w-10 rounded-xl bg-[#cbe557]/10 border border-[#cbe557]/30 flex items-center justify-center">
+              <LayoutDashboard size={20} className="text-[#cbe557]" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white tracking-tight">Candidate Profile</h1>
+              <div className="flex items-center gap-2">
+                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                 <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">System Operational</p>
+              </div>
+            </div>
+          </div>
           
-          {/* --- LEFT COLUMN: PAST SESSIONS --- */}
-          <div className="lg:col-span-1 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold text-gray-200">History</h2>
-              <span className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">
-                {data.interviewHistory.length} Sessions
-              </span>
+          <div className="flex items-center gap-6">
+              <div className="hidden md:flex flex-col items-end">
+                <p className="font-semibold text-sm text-neutral-200">{data.user.name}</p>
+                <p className="text-xs text-neutral-600 font-medium">{data.user.email}</p>
+              </div>
+              <div className="h-10 w-10 rounded-full bg-neutral-900 border border-white/10 flex items-center justify-center font-bold text-neutral-400">
+                {data.user.name?.[0]?.toUpperCase()}
+              </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ==================== MAIN CONTENT (Z-10) ==================== */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* --- LEFT SIDEBAR (min-w-0 prevents flex blowout) --- */}
+          <aside className="lg:col-span-4 min-w-0 lg:sticky lg:top-24 space-y-4 animate-in fade-in slide-in-from-left-4 duration-700">
+            <div className="flex items-center justify-between px-1 mb-2">
+              <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-[0.15em] flex items-center gap-2">
+                <Clock size={12} className="text-[#cbe557]" /> Session Log
+              </h2>
             </div>
             
-            <div className="space-y-3 max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
+            {/* Added max-height with scroll to prevent sidebar from overflowing viewport */}
+            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
               {data.interviewHistory.map((session, idx) => (
                 <SessionCard 
                   key={session.sessionId} 
@@ -197,14 +228,15 @@ export default function ProfilePage() {
                 />
               ))}
             </div>
-          </div>
+          </aside>
 
-          {/* --- RIGHT COLUMN: SELECTED SESSION --- */}
-          <div className="lg:col-span-3 space-y-6">
+          {/* --- RIGHT CONTENT (min-w-0 ensures grid containment) --- */}
+          <section className="lg:col-span-8 min-w-0 space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-backwards">
             {selectedSession ? (
               <>
                 <SectionWrapper
                   title="Executive Summary"
+                  icon={<Activity size={18} />}
                   sectionId="overview"
                   expanded={expandedSections.has("overview")}
                   onToggle={toggleSection}
@@ -212,17 +244,36 @@ export default function ProfilePage() {
                   <SessionOverview session={selectedSession} />
                 </SectionWrapper>
 
-                <SectionWrapper
-                  title="Round-Wise Competency"
-                  sectionId="rounds"
-                  expanded={expandedSections.has("rounds")}
-                  onToggle={toggleSection}
-                >
-                  <RoundWiseProgress rounds={selectedSession.rounds} />
-                </SectionWrapper>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Added min-w-0 to prevent these internal grids from overlapping */}
+                  <div className="min-w-0">
+                    <SectionWrapper
+                      title="Competency Matrix"
+                      icon={<Zap size={18} />}
+                      sectionId="rounds"
+                      expanded={expandedSections.has("rounds")}
+                      onToggle={toggleSection}
+                    >
+                      <RoundWiseProgress rounds={selectedSession.rounds} />
+                    </SectionWrapper>
+                  </div>
+
+                  <div className="min-w-0">
+                    <SectionWrapper
+                      title="AI Analysis"
+                      icon={<User size={18} />}
+                      sectionId="insights"
+                      expanded={expandedSections.has("insights")}
+                      onToggle={toggleSection}
+                    >
+                      <PerformanceInsights insights={selectedSession.performanceInsights} />
+                    </SectionWrapper>
+                  </div>
+                </div>
 
                 <SectionWrapper
-                  title="Integrity & Proctoring Log"
+                  title="Integrity Log"
+                  icon={<ShieldCheck size={18} />}
                   sectionId="integrity"
                   expanded={expandedSections.has("integrity")}
                   onToggle={toggleSection}
@@ -231,16 +282,8 @@ export default function ProfilePage() {
                 </SectionWrapper>
 
                 <SectionWrapper
-                  title="AI Skill Analysis"
-                  sectionId="insights"
-                  expanded={expandedSections.has("insights")}
-                  onToggle={toggleSection}
-                >
-                  <PerformanceInsights insights={selectedSession.performanceInsights} />
-                </SectionWrapper>
-
-                <SectionWrapper
-                  title="Actions & Documentation"
+                  title="Export Data"
+                  icon={<FileText size={18} />}
                   sectionId="export"
                   expanded={expandedSections.has("export")}
                   onToggle={toggleSection}
@@ -249,88 +292,105 @@ export default function ProfilePage() {
                 </SectionWrapper>
               </>
             ) : (
-              <div className="h-64 flex items-center justify-center bg-gray-800 rounded-xl border border-gray-700 border-dashed">
-                <p className="text-gray-400">Select a session from the history to view details</p>
+              <div className="h-96 flex flex-col items-center justify-center bg-neutral-900/30 rounded-3xl border border-dashed border-white/10 backdrop-blur-sm">
+                <div className="p-4 bg-white/5 rounded-full mb-4 ring-1 ring-white/10">
+                  <LayoutDashboard className="w-8 h-8 text-neutral-600" />
+                </div>
+                <p className="text-neutral-500 font-medium">Select a session to view details</p>
               </div>
             )}
-          </div>
+          </section>
 
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
-// --- HELPER COMPONENT ---
+// --- SUB-COMPONENTS ---
 
 function SessionCard({ session, isActive, onClick }: { session: any, isActive: boolean, onClick: () => void }) {
   const date = new Date(session.date);
-  
   const rounds = [session.rounds?.screening, session.rounds?.technical, session.rounds?.behavioral];
   const scores = rounds
     .map((r: any) => r?.averageScore)
     .filter((s: any) => typeof s === 'number') as number[];
-  
-  const avg = scores.length 
-    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) 
-    : 0;
+  const avg = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) : 0;
 
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left p-4 rounded-xl border transition-all duration-200 group relative overflow-hidden ${
+      className={`group w-full text-left p-4 rounded-xl border transition-all duration-300 relative overflow-hidden flex flex-col gap-2 ${
         isActive 
-          ? "bg-indigo-900/20 border-indigo-500 shadow-lg shadow-indigo-900/10" 
-          : "bg-gray-800 border-gray-700 hover:bg-gray-750 hover:border-gray-600"
+          ? "bg-[#cbe557]/[0.03] border-[#cbe557]/40 shadow-[0_0_30px_-10px_rgba(203,229,87,0.15)]" 
+          : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10"
       }`}
     >
-      {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500" />}
-      
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <p className="text-sm font-medium text-gray-200 group-hover:text-white">
+      {isActive && <div className="absolute inset-0 bg-gradient-to-r from-[#cbe557]/10 to-transparent opacity-20 pointer-events-none" />}
+      <div className={`absolute left-0 top-0 bottom-0 w-[3px] transition-all duration-300 ${isActive ? "bg-[#cbe557]" : "bg-transparent"}`} />
+
+      <div className="flex justify-between items-start pl-3 w-full relative z-10">
+        <div className="min-w-0 flex-1 mr-2">
+          <p className={`text-sm font-bold tracking-tight truncate transition-colors ${isActive ? "text-white" : "text-neutral-400 group-hover:text-neutral-200"}`}>
             Interview Session
           </p>
-          <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
-            <Calendar className="w-3 h-3" />
-            {date.toLocaleDateString()}
+          <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-neutral-600 uppercase tracking-wider">
+            <span className="truncate">{date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })}</span>
           </div>
         </div>
-        <div className={`px-2 py-1 rounded text-xs font-bold ${
-          avg >= 70 ? 'bg-green-500/10 text-green-400' : 
-          avg >= 50 ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'
+        
+        <div className={`px-2 py-0.5 rounded text-[10px] font-black border backdrop-blur-md shrink-0 ${
+            avg >= 70 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+            avg >= 50 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 
+            'bg-red-500/10 text-red-400 border-red-500/20'
         }`}>
           {avg > 0 ? `${avg}%` : 'N/A'}
         </div>
-      </div>
-
-      <div className="flex justify-between items-end mt-3">
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <Clock className="w-3 h-3" />
-          <span>{date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-        </div>
-        {isActive && <ChevronRight className="w-4 h-4 text-indigo-400 animate-pulse" />}
       </div>
     </button>
   );
 }
 
-// --- WRAPPER ---
-
-function SectionWrapper({ title, sectionId, expanded, onToggle, children }: any) {
+function SectionWrapper({ title, icon, sectionId, expanded, onToggle, children }: any) {
   return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl transition-all duration-200">
+    // relative z-0 here ensures this block creates its own stacking context but doesn't float above sticky headers
+    <div className={`
+      rounded-2xl border overflow-hidden transition-all duration-500 ease-in-out relative z-0
+      ${expanded 
+        ? 'bg-neutral-900/60 border-white/10 shadow-lg backdrop-blur-xl ring-1 ring-white/5' 
+        : 'bg-neutral-900/20 border-white/5 hover:border-white/10 hover:bg-neutral-900/40'
+      }
+    `}>
       <button
         onClick={() => onToggle(sectionId)}
-        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-700/40 transition-colors"
+        className="w-full px-6 py-5 flex items-center justify-between group cursor-pointer relative z-10 focus:outline-none"
       >
-        <div className="flex items-center gap-3">
-          <div className={`w-1.5 h-6 rounded-full ${expanded ? 'bg-indigo-500' : 'bg-gray-600'}`} />
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <div className="flex items-center gap-4">
+          <div className={`
+            w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-300 border shrink-0
+            ${expanded 
+              ? "bg-[#cbe557] text-black border-[#cbe557]" 
+              : "bg-white/5 text-neutral-500 border-white/5 group-hover:border-white/10"
+            }
+          `}>
+            {icon || <Activity size={20} />}
+          </div>
+          <h2 className={`text-base font-bold tracking-tight text-left transition-colors duration-300 ${expanded ? "text-white" : "text-neutral-400 group-hover:text-neutral-200"}`}>
+            {title}
+          </h2>
         </div>
-        {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+        <div className={`p-2 rounded-full transition-all duration-500 shrink-0 ${expanded ? 'bg-white/5 text-[#cbe557] rotate-180' : 'text-neutral-600 group-hover:text-neutral-400'}`}>
+           <ChevronDown className="w-4 h-4" />
+        </div>
       </button>
-      {expanded && <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-300">{children}</div>}
+      
+      <div className={`grid transition-[grid-template-rows] duration-500 ease-in-out ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        <div className="overflow-hidden">
+            <div className="px-6 pb-6 pt-2 border-t border-white/5">
+                {children}
+            </div>
+        </div>
+      </div>
     </div>
   );
 }
