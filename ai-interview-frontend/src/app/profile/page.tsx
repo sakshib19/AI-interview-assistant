@@ -5,7 +5,7 @@ import { useProfile, DashboardData } from "../hooks/useProfile";
 import { useAuth } from "../context/AuthContext";
 // Ensure these components handle their own internal sizing gracefully
 import SessionOverview from "./components/SessionOverview";
-import RoundWiseProgress from "./components/RoundWiseProgress";
+import RoundSummaryPanel from "./components/RoundSummaryPanel";
 import IntegrityProctoringLog from "./components/IntegrityProctoringLog";
 import PerformanceInsights from "./components/PerformanceInsights";
 import ExportReports from "./components/ExportReports";
@@ -49,7 +49,10 @@ export type SessionDetail = {
     behavioral?: RoundData;
   };
   violations: any[];
-  performanceInsights?: any;
+  // performanceInsights?: any;
+  metadata?: {
+    round_summaries?: Record<string, RoundSummary>;
+  };
 };
 
 export default function ProfilePage() {
@@ -111,7 +114,7 @@ export default function ProfilePage() {
         sessionId: currentSession.sessionId,
         finalVerdict: rawSession.finalVerdict === "hire" ? "Hire" : rawSession.finalVerdict === "reject" ? "Reject" : "Pending",
         confidence: rawSession.decisionConfidence || 0,
-        duration: 45, 
+        duration: rawSession.duration, 
         totalQuestions: rawSession.qaIds?.length || 0,
         recommendedRole: rawSession.recommendedRole || null,
         violationCount: rawSession.violationCount || 0,
@@ -124,13 +127,14 @@ export default function ProfilePage() {
           technical: transformRound(currentSession.rounds?.technical, "technical"),
           behavioral: transformRound(currentSession.rounds?.behavioral, "behavioral")
         },
-        performanceInsights: {
-          strongAreas: ["Problem-solving", "Code Logic"],
-          weakAreas: [],
-          consistency: 0.82,
-          variance: 0.15,
-          recommendations: ["Review system design patterns"]
-        }
+        // performanceInsights: {
+        //   strongAreas: ["Problem-solving", "Code Logic"],
+        //   weakAreas: [],
+        //   consistency: 0.82,
+        //   variance: 0.15,
+        //   recommendations: ["Review system design patterns"]
+        // }
+         metadata: rawSession.metadata || {}
     } as SessionDetail;
   }, [data, selectedIndex]);
 
@@ -244,32 +248,18 @@ export default function ProfilePage() {
                   <SessionOverview session={selectedSession} />
                 </SectionWrapper>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Added min-w-0 to prevent these internal grids from overlapping */}
-                  <div className="min-w-0">
-                    <SectionWrapper
-                      title="Competency Matrix"
-                      icon={<Zap size={18} />}
-                      sectionId="rounds"
-                      expanded={expandedSections.has("rounds")}
-                      onToggle={toggleSection}
-                    >
-                      <RoundWiseProgress rounds={selectedSession.rounds} />
-                    </SectionWrapper>
-                  </div>
+              <div className="min-w-0">
+                <SectionWrapper
+                  title="Round Performance Summary"
+                  icon={<Zap size={18} />}
+                  sectionId="roundSummary"
+                  expanded={expandedSections.has("roundSummary")}
+                  onToggle={toggleSection}
+                >
+                  <RoundSummaryPanel roundSummaries={selectedSession.metadata?.round_summaries} />
+                </SectionWrapper>
+              </div>
 
-                  <div className="min-w-0">
-                    <SectionWrapper
-                      title="AI Analysis"
-                      icon={<User size={18} />}
-                      sectionId="insights"
-                      expanded={expandedSections.has("insights")}
-                      onToggle={toggleSection}
-                    >
-                      <PerformanceInsights insights={selectedSession.performanceInsights} />
-                    </SectionWrapper>
-                  </div>
-                </div>
 
                 <SectionWrapper
                   title="Integrity Log"

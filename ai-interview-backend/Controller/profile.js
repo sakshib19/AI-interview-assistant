@@ -74,10 +74,19 @@ async function getProfileDashboard(req, res) {
 
       const decision = decisionMap[session.sessionId];
 
+      /* ================= DURATION CALCULATION ================= */
+      let duration = 0;
+      if (session.startedAt && session.endedAt) {
+        duration = Math.round(
+          (new Date(session.endedAt) - new Date(session.startedAt)) / 60000
+        ); // minutes
+      }
+
       interviewHistory.push({
         sessionId: session.sessionId,
         date: session.startedAt,
         endedAt: session.endedAt,
+        duration,
 
         violationCount: session.violationCount || 0,
         events: session.events || [],
@@ -92,7 +101,9 @@ async function getProfileDashboard(req, res) {
           screening: summarizeRound(rounds.screening),
           technical: summarizeRound(rounds.technical),
           behavioral: summarizeRound(rounds.behavioral)
-        }
+        },
+
+         metadata: session.metadata || {}
       });
     }
 
