@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import ResumeUploader from "../resume/page";
@@ -901,6 +901,7 @@ const normalizeVerdict = (v?: string) => {
   const [reenterPromptVisible, setReenterPromptVisible] = useState(false);
   const [needsFullscreen, setNeedsFullscreen] = useState(true);
   const startAttemptRef = useRef(false); // Used to prevent duplicate handleStart calls
+  const pendingArgsRef = useRef<any>(null);
 const [hint, setHint] = useState<string | null>(null);
   const [loadingHint, setLoadingHint] = useState(false);
   // Countdown for re-enter modal
@@ -1458,6 +1459,10 @@ const reportViolationWrapper = useCallback(
       -------------------------------------------------------------------------- */
 const MIN_IMAGE_LENGTH = 10000;
 
+/* --------------------------------------------------------------------------
+   Reference capture (client-side quality checks only)
+   - STRICTER VALIDATION: Single Person, Face Size, Lighting
+   -------------------------------------------------------------------------- */
 const captureReferenceImage = useCallback(async () => {
   setImageStatus("capturing");
   setCameraError(null);
@@ -1474,8 +1479,9 @@ const captureReferenceImage = useCallback(async () => {
         throw new Error("Video/canvas not available");
       }
 
-      // Ensure fresh stream
+      // 1. Ensure Stream is Active
       if (!videoEl.srcObject || attempt > 1) {
+        // Stop existing tracks if retrying to force hardware re-sync
         const existingStream = videoEl.srcObject as MediaStream;
         if (existingStream) {
           existingStream.getTracks().forEach(t => t.stop());
@@ -1495,7 +1501,7 @@ const captureReferenceImage = useCallback(async () => {
         videoEl.playsInline = true;
       }
 
-      // Wait for ready state
+      // 2. Wait for Video Ready State
       const maxWaitMs = 5000;
       const pollInterval = 100;
       let waited = 0;
@@ -1511,13 +1517,15 @@ const captureReferenceImage = useCallback(async () => {
         console.warn("Autoplay blocked:", playErr);
       }
 
-      // CRITICAL: Wait longer for stable frame
-      await new Promise((r) => setTimeout(r, 1000));
+      // 3. CRITICAL: Wait for Auto-Exposure/White Balance to settle
+      // This reduces blurry/dark frames significantly
+      await new Promise((r) => setTimeout(r, 1200));
 
       if (!videoEl.videoWidth || !videoEl.videoHeight) {
         throw new Error(`No video frames (attempt ${attempt}/${MAX_RETRIES})`);
       }
 
+      // 4. Capture Frame to Canvas
       const ctx = canvas.getContext("2d");
       canvas.width = videoEl.videoWidth;
       canvas.height = videoEl.videoHeight;
@@ -1526,20 +1534,20 @@ const captureReferenceImage = useCallback(async () => {
       
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
 
-      // Get image
-      const imageDataUrl = canvas.toDataURL("image/jpeg", 0.90); // Higher quality
+      const imageDataUrl = canvas.toDataURL("image/jpeg", 0.95); 
       
       if (!imageDataUrl || imageDataUrl.length < 10000) {
         throw new Error(`Image too small: ${imageDataUrl?.length} bytes`);
       }
 
-      // Analyze quality
+      // 5. QUALITY CHECK: Lighting & Contrast
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
       
       let sum = 0;
-      const sampleLimit = Math.min(data.length, 50000);
+      const sampleLimit = Math.min(data.length, 50000); 
       
+      // Calculate average brightness using relative luminance
       for (let i = 0; i < sampleLimit; i += 4) {
         const r = data[i], g = data[i + 1], b = data[i + 2];
         sum += (0.299 * r + 0.587 * g + 0.114 * b);
@@ -1547,52 +1555,66 @@ const captureReferenceImage = useCallback(async () => {
       
       const averageBrightness = sum / (sampleLimit / 4);
       
-      // RELAXED thresholds
-      if (averageBrightness < 25) {
-        throw new Error(`Too dark (${averageBrightness.toFixed(1)}). Turn on lights and retry.`);
+      // Stricter Thresholds
+      if (averageBrightness < 40) { 
+        throw new Error(`Environment too dark (${averageBrightness.toFixed(0)}/255). Please face a light source.`);
       }
-      if (averageBrightness > 240) {
-        throw new Error(`Too bright (${averageBrightness.toFixed(1)}). Reduce backlight.`);
+      if (averageBrightness > 230) { 
+        throw new Error(`Environment too bright (${averageBrightness.toFixed(0)}/255). Avoid strong backlighting.`);
       }
 
-      // Variance check
+      // Calculate Variance (Focus/Contrast check)
       let mean = 0;
       const luminances: number[] = [];
-      
       for (let i = 0; i < sampleLimit; i += 4) {
         const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
         luminances.push(lum);
         mean += lum;
       }
-      
       mean = mean / luminances.length;
       let variance = 0;
-      
-      for (const lum of luminances) {
-        variance += (lum - mean) ** 2;
-      }
-      
+      for (const lum of luminances) variance += (lum - mean) ** 2;
       variance = variance / luminances.length;
 
-      // RELAXED variance threshold
-      if (variance < 150) {
-        throw new Error(`Low contrast (${variance.toFixed(1)}). Ensure clear face visibility.`);
+      if (variance < 200) { 
+        throw new Error("Image too blurry or low contrast. Please clean camera lens or improve lighting.");
       }
 
-      // Basic face detection heuristic (fallback if API unavailable)
+      // 6. FACE DETECTION (Chrome/Edge/Opera) or Fallback (Firefox/Safari)
       let faceDetected = false;
       
       try {
         const FaceDetector = (window as any).FaceDetector;
         if (typeof FaceDetector === "function") {
-          const detector = new FaceDetector();
+          // Request up to 5 faces to ensure we catch if there are multiple
+          const detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
           const faces = await detector.detect(canvas as any);
-          faceDetected = !!(faces && faces.length > 0);
+          
+          // STRICT RULE 1: Exactly One Person
+          if (!faces || faces.length === 0) {
+            throw new Error("No face detected. Please center your face in the frame.");
+          }
+          if (faces.length > 1) {
+            throw new Error(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`);
+          }
+
+          // STRICT RULE 2: Proximity / Size
+          const face = faces[0];
+          const faceWidth = face.boundingBox.width;
+          const minWidth = canvas.width * 0.15; // Face must take up at least 15% of screen width
+          
+          if (faceWidth < minWidth) {
+             throw new Error("You are too far away. Please move closer to the camera.");
+          }
+
+          faceDetected = true;
         } else {
-          // Heuristic: check for skin-like pixels in center
+          // --- FALLBACK HEURISTIC (Firefox/Safari) ---
+          // Since we can't count faces reliably, we check for skin-tone density in the center
+          // to ensure a user is sitting in front of the camera.
           const cx = Math.floor(canvas.width / 2);
           const cy = Math.floor(canvas.height / 2);
-          const boxW = Math.floor(canvas.width * 0.4);
+          const boxW = Math.floor(canvas.width * 0.3); // Check center 30%
           const boxH = Math.floor(canvas.height * 0.4);
           
           let skinLike = 0, samples = 0;
@@ -1604,6 +1626,7 @@ const captureReferenceImage = useCallback(async () => {
               const idx = (y * canvas.width + x) * 4;
               const r = data[idx], g = data[idx + 1], b = data[idx + 2];
               
+              // Basic skin tone approximation
               if (r > 95 && g > 40 && b > 20 && r > g && r > b) {
                 skinLike++;
               }
@@ -1611,16 +1634,21 @@ const captureReferenceImage = useCallback(async () => {
             }
           }
           
-          faceDetected = samples > 0 && (skinLike / samples) > 0.06; // Relaxed from 0.08
+          // Require >15% skin-like pixels in the center box
+          faceDetected = samples > 0 && (skinLike / samples) > 0.15; 
+          
+          if (!faceDetected) {
+             throw new Error("Face unclear. Please center yourself and look at the camera.");
+          }
         }
-      } catch (detErr) {
-        console.warn("Face detection attempt failed:", detErr);
-        // DON'T fail here - let backend handle it
-        faceDetected = true;
-      }
-
-      if (!faceDetected) {
-        throw new Error("No face detected. Center your face and try again.");
+      } catch (detErr: any) {
+        console.warn("Face detection check failed:", detErr.message);
+        // If the error is one of our specific checks, re-throw it to the UI
+        if (detErr.message.includes("Multiple") || detErr.message.includes("No face") || detErr.message.includes("far away")) {
+            throw detErr;
+        }
+        // If the API crashed, allow it to pass if the image quality (lighting/contrast) was good
+        faceDetected = true; 
       }
 
       // SUCCESS
@@ -1636,7 +1664,7 @@ const captureReferenceImage = useCallback(async () => {
       console.warn(`Capture attempt ${attempt}/${MAX_RETRIES} failed:`, err.message);
       
       if (attempt < MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, 500)); // Brief pause before retry
+        await new Promise(r => setTimeout(r, 700)); // Pause before retry
       }
     }
   }
@@ -1646,15 +1674,13 @@ const captureReferenceImage = useCallback(async () => {
   
   setCameraActive(false);
   setReferenceImage(null);
- 
 
-  const errorMessage = lastError?.message || "Camera capture failed after multiple attempts";
+  const errorMessage = lastError?.message || "Camera capture failed. Check lighting and permissions.";
   setCameraError(errorMessage);
   setImageStatus("error");
   
   throw lastError;
 }, []);
-
 
   /* -------------------------
       Proctor capture (uses proctorVideoRef & captureCanvasRef)
@@ -1741,7 +1767,7 @@ useEffect(() => {
     return true;
   };
 
-  // sendProctorPayload: only send valid frames
+ // sendProctorPayload: only send valid frames
   const sendProctorPayload = async (payload: { sessionId: string; image: string | null }) => {
     try {
       // CRITICAL CHECK: Don't send if image is invalid
@@ -1749,8 +1775,6 @@ useEffect(() => {
         console.warn("[proctor] Skipping send - invalid frame");
         return { ok: false, skipReason: "invalid_frame" };
       }
-
-      console.debug("[proctor -> server] sending image sample:", String(payload.image).substring(0, 80), "len=", String(payload.image).length);
 
       const res = await fetch(`${API || ""}/interview/proctor`, {
         method: "POST",
@@ -1764,20 +1788,30 @@ useEffect(() => {
         }),
       });
 
-      const j = await res.json().catch(() => null);
-      const hasError = !res.ok || j?.verified === false || j?.status === "failed";
+      // 🛑 CRITICAL FIX: If the Node or AI server is down (500, 502, 503, 504), 
+      // abort immediately so we DO NOT report a violation.
+      if (res.status >= 500) {
+        console.warn(`[proctor] Backend is temporarily down (Status: ${res.status}). Ignoring.`);
+        return { ok: false, skipReason: "server_down" };
+      }
 
-      if (hasError) {
+      const j = await res.json().catch(() => null);
+      
+      // ✅ ONLY flag a violation if the server responded with 200 OK, but verified is false
+      const isViolation = res.ok && (j?.verified === false || j?.status === "failed");
+
+      if (isViolation) {
         const violationReason = j?.error || j?.reason || j?.detail || "Face verification failed";
         console.warn(`[PROCTOR VIOLATION detected] Reason: ${violationReason}`);
         reportViolationWrapper(violationReason, false);
-      } else if (j?.status === "success" || j?.verified === true) {
+      } else if (res.ok && (j?.status === "success" || j?.verified === true)) {
         if (showViolationWarning) setShowViolationWarning(false);
       }
 
       return { ok: res.ok, statusCode: res.status, body: j };
     } catch (err) {
-      console.warn("proctor POST failed:", err);
+      console.warn("proctor POST failed (Network Error):", err);
+      // Ignore network disconnects completely so they don't count as cheating
       return { ok: false, error: err };
     }
   };
@@ -1991,6 +2025,9 @@ const handleStart = useCallback(
 
         // STEP 2: Fullscreen check
         if (needsFullscreen && !isFullscreen()) {
+          // 🟢 FIX: Save the current arguments to the ref before returning
+          pendingArgsRef.current = { arg1, difficulty, techStack };
+          
           setFullscreenPromptVisible(true);
           startAttemptRef.current = false;
           return;
@@ -2115,7 +2152,7 @@ const handleStart = useCallback(
       }
     },
     [token, needsFullscreen, isFullscreen, startInterview, captureReferenceImage, 
-     referenceImage, resumeParsed, API, stopCamera, imageStatus]
+      referenceImage, resumeParsed, API, stopCamera, imageStatus]
   );  /* -------------------------
       Answer submit handler (unchanged)
       ------------------------- */
@@ -3502,6 +3539,7 @@ useEffect(() => {
         )}
 
         {/* Fullscreen prompt modal (initial start) (unchanged) */}
+    {/* Fullscreen prompt modal (initial start) */}
         {fullscreenPromptVisible && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="max-w-lg w-full bg-white rounded-xl p-6 shadow-lg">
@@ -3530,7 +3568,16 @@ useEffect(() => {
                     onClick={async () => {
                       setFullscreenPromptVisible(false);
                       setNeedsFullscreen(false);
-                      await handleStart("Technical Interview", "medium", "");
+                      
+                      // ✅ FIX: Retrieve saved arguments (which contain your Role/Style object)
+                      const args = pendingArgsRef.current || { 
+                        arg1: "Technical Interview", 
+                        difficulty: "medium", 
+                        techStack: "" 
+                      };
+                      
+                      // ✅ FIX: Pass the SAVED args, not hardcoded strings
+                      await handleStart(args.arg1, args.difficulty, args.techStack);
                     }}
                   >
                     Start anyway (not recommended)
@@ -3542,7 +3589,15 @@ useEffect(() => {
                       setFullscreenPromptVisible(false);
                       const entered = await tryRequestFullscreen();
                       if (entered) {
-                        await handleStart("Technical Interview", "medium", "");
+                        // ✅ FIX: Retrieve saved arguments
+                        const args = pendingArgsRef.current || { 
+                          arg1: "Technical Interview", 
+                          difficulty: "medium", 
+                          techStack: "" 
+                        };
+                        
+                        // ✅ FIX: Pass the SAVED args, not hardcoded strings
+                        await handleStart(args.arg1, args.difficulty, args.techStack);
                       } else {
                         setFullscreenPromptVisible(true);
                       }
@@ -3880,110 +3935,118 @@ useEffect(() => {
         )}
 
         {/* Start Button & Camera Preview */}
-     {(stage as string) === "idle" && resumeParsed && token && (
-  <div className="mb-8 flex flex-col items-center">
-    <div className="mb-6 relative group">
-      <div className="w-80 h-60 bg-slate-900 rounded-2xl overflow-hidden border-4 border-white shadow-xl ring-4 ring-indigo-100 relative">
-        <video
-          ref={previewVideoRef}
-          autoPlay
-          muted
-          playsInline
-          className="w-full h-full object-cover transform scale-x-[-1]"
-        />
-        
-        <canvas ref={previewCanvasRef} style={{ display: "none" }} />
-        <canvas ref={captureCanvasRef} style={{ display: "none" }} />
+{/* Start Button & Camera Preview */}
+      {(stage as string) === "idle" && resumeParsed && token && (
+        <div className="mb-8 flex flex-col items-center">
+          <div className="mb-6 relative group">
+            <div className="w-80 h-60 bg-slate-900 rounded-2xl overflow-hidden border-4 border-white shadow-xl ring-4 ring-indigo-100 relative">
+              <video
+                ref={previewVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover transform scale-x-[-1]"
+              />
 
-        {cameraError && (
+              <canvas ref={previewCanvasRef} style={{ display: "none" }} />
+              <canvas ref={captureCanvasRef} style={{ display: "none" }} />
+
+              {/* --- OVERLAYS --- */}
+
+              {/* 1. Error / Retry Overlay */}
+              {cameraError && (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center text-rose-100 text-sm p-6 text-center bg-black/80 cursor-pointer hover:bg-black/90 transition-colors z-20"
+                  onClick={captureReferenceImage}
+                >
+                  <AlertCircle size={32} className="mb-2 text-rose-400" />
+                  <div className="font-bold mb-1">Check Failed</div>
+                  <div className="text-xs opacity-90">{cameraError}</div>
+                  <div className="mt-3 px-3 py-1 bg-white/10 rounded-full text-xs font-bold border border-white/20">
+                    Tap to Retry
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Manual Capture Overlay (If active but user wants to ensure quality) */}
+              {!cameraError && imageStatus !== "capturing" && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 cursor-pointer z-10"
+                  onClick={captureReferenceImage}
+                >
+                  <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-white text-xs font-bold border border-white/20 flex items-center gap-2 transform hover:scale-105 transition-transform">
+                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                    Click to Recapture
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Loading Overlay */}
+              {imageStatus === "capturing" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-30">
+                  <Loader2 size={32} className="text-white animate-spin mb-2" />
+                  <span className="text-white text-xs font-bold">Verifying...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Speech Recognition Error (existing) */}
+            {speechError && (
+              <div className="mb-4 p-4 rounded-xl bg-amber-50 border-2 border-amber-200 text-amber-900 flex items-start gap-3 shadow-sm animate-in fade-in">
+                <AlertCircle size={20} className="shrink-0" />
+                <div>
+                  <div className="font-bold">Speech Recognition Issue</div>
+                  <div className="text-sm">{speechError}</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Status indicator Pill */}
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center text-rose-100 text-sm p-6 text-center bg-black/80 cursor-pointer hover:bg-black/70 transition-colors"
-            onClick={async () => {
-              setCameraError(null);
-              setImageStatus("pending");
-              try {
-                await captureReferenceImage();
-              } catch (err) {
-                console.warn("Manual retry failed:", err);
-              }
-            }}
+            className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full shadow-lg text-xs font-bold whitespace-nowrap border cursor-pointer hover:scale-105 transition-transform z-10 ${
+              getImageStatusIndicator().className
+            }`}
+            onClick={captureReferenceImage} // Allow clicking status to retry
           >
-            <AlertCircle size={32} className="mb-2" />
-            <div className="font-bold mb-1">{cameraError}</div>
-            <div className="text-xs mt-2 underline">Click here to retry</div>
+            {getImageStatusIndicator().text}
           </div>
-        )}
-        {/* Speech Recognition Error */}
-{speechError && stage === "running" && (
-  <div className="mb-4 p-4 rounded-xl bg-amber-50 border-2 border-amber-200 text-amber-900 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2">
-    <AlertCircle size={20} className="shrink-0" />
-    <div>
-      <div className="font-bold">Speech Recognition Issue</div>
-      <div className="text-sm">{speechError}</div>
-    </div>
-  </div>
-)}
 
-{!isSupported && stage === "running" && (
-  <div className="mb-4 p-4 rounded-xl bg-rose-50 border-2 border-rose-200 text-rose-900 flex items-start gap-3 shadow-sm">
-    <X size={20} className="shrink-0" />
-    <div>
-      <div className="font-bold">Speech Recognition Not Supported</div>
-      <div className="text-sm">Please use Chrome, Edge, or Safari for voice input.</div>
-    </div>
-  </div>
-)}
-      </div>
+          {/* START BUTTON - Opens Config Modal */}
+          <button
+            onClick={() => setShowConfigModal(true)}
+            disabled={
+              loading || imageStatus !== "captured" || startAttemptRef.current
+            }
+            className="group relative inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-xl shadow-2xl hover:shadow-indigo-300 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 mt-8"
+          >
+            {loading || startAttemptRef.current ? (
+              <>
+                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Starting...</span>
+              </>
+            ) : (
+              <>
+                <span>Begin Technical Interview</span>
+                <div className="bg-white/20 p-2 rounded-full group-hover:translate-x-1 transition-transform">
+                  <Play size={20} fill="currentColor" />
+                </div>
+              </>
+            )}
+          </button>
 
-      {/* Status indicator */}
-      <div
-        className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full shadow-md text-xs font-bold whitespace-nowrap border ${
-          getImageStatusIndicator().className
-        }`}
-        onClick={imageStatus === "error" ? async () => {
-          setCameraError(null);
-          setImageStatus("pending");
-          try {
-            await captureReferenceImage();
-          } catch (err) {}
-        } : undefined}
-      >
-        {getImageStatusIndicator().text}
-      </div>
-    </div>
-
-    <button
-  onClick={() => setShowConfigModal(true)} // 👈 OPEN MODAL, DON'T START YET
-  disabled={loading || imageStatus !== "captured" || startAttemptRef.current}
-  className="group relative inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-xl shadow-2xl hover:shadow-indigo-300 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
->
-  {loading || startAttemptRef.current ? (
-    <>
-      <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-      <span>Starting...</span>
-    </>
-  ) : (
-        <>
-          <span>Begin Technical Interview</span>
-          <div className="bg-white/20 p-2 rounded-full group-hover:translate-x-1 transition-transform">
-            <Play size={20} fill="currentColor" />
-          </div>
-        </>
+          {/* CONFIG MODAL RENDER */}
+          {showConfigModal && (
+            <InterviewConfigModal
+              onCancel={() => setShowConfigModal(false)}
+              onStart={(config) => {
+                setShowConfigModal(false);
+                handleStart(config);
+              }}
+            />
+          )}
+        </div>
       )}
-    </button>
-    {/* 👇 RENDER THE MODAL COMPONENT */}
-{showConfigModal && (
-  <InterviewConfigModal 
-    onCancel={() => setShowConfigModal(false)}
-    onStart={(config) => {
-      setShowConfigModal(false);
-      handleStart(config); // Pass the config to start logic
-    }}
-  />
-)}
-  </div>
-)}
-
         {/* Error Message (unchanged) */}
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-rose-50 border-2 border-rose-200 text-rose-700 text-sm flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">

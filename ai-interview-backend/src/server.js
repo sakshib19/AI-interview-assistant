@@ -1749,7 +1749,7 @@ app.post("/interview/proctor", requireAuth, async (req, res) => {
             return res.json({ status: "invalid_image", verified: true, message: "Frame validation failed (camera warming up)" });
         }
 
-        try {
+try {
             // Call AI service
             const verifyPayload = {
                 session_id: sessionId, 
@@ -1797,11 +1797,38 @@ app.post("/interview/proctor", requireAuth, async (req, res) => {
             return res.json({ status: "success", verified: true, distance: data.distance });
 
         } catch (aiErr) {
+            // 🚀 --- THE SELF-HEALING FIX --- 🚀
+            // If Python restarted, it lost the in-memory FACE_DB and returns 400 "Session not found"
+            if (aiErr.response && aiErr.response.status === 400) {
+                console.log(`🔄 AI Server lost FACE_DB for session ${sessionId}. Attempting self-healing re-registration...`);
+                
+                try {
+                    // 1. Get the original reference image from MongoDB
+                    const sessionDoc = await Session.findOne({ sessionId }).select("metadata.referenceFace").lean();
+                    const refImage = sessionDoc?.metadata?.referenceFace;
+                    
+                    if (refImage) {
+                        // 2. Silently re-register the face with the Python AI
+                        await callAiRegisterFace({
+                            sessionId,
+                            image: AI_EXPECTS_RAW_BASE64 ? stripDataPrefix(refImage) : refImage
+                        });
+                        
+                        console.log(`✅ Self-healing successful! Face restored. Skipping this frame.`);
+                        // Tell frontend it's all good, we will catch them on the next 6-second interval
+                        return res.json({ status: "success", verified: true, message: "Session state restored" });
+                    }
+                } catch (reRegErr) {
+                    console.error("❌ Self-healing failed:", reRegErr.message);
+                }
+            }
+
+            // Standard error handling if the server is actually down
             console.error("❌ AI Service Error:", aiErr.message);
             return res.status(502).json({ 
-                status: "failed", 
-                verified: false, 
-                error: "AI service unavailable" 
+                status: "error", 
+                system_error: true, // Explicitly tell frontend to ignore this
+                error: "AI service unavailable temporarily" 
             });
         }
     } catch (err) {
