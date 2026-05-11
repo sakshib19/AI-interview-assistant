@@ -1,5 +1,4 @@
 """Interview route module extracted from interview_routes.py."""
-
 from typing import Any, Dict, cast
 
 from fastapi import APIRouter, HTTPException
@@ -29,6 +28,7 @@ from services.interview_engine import (
     llm_call,
     normalize_overall_score,
     redact_pii,
+    run_async_blocking,
     safe_truncate,
     should_verify_resume,
 )
@@ -165,13 +165,13 @@ def score_answer(req: ScoreAnswerRequest):
 
     if groq_client:
         try:
-            resp = groq_client.chat.completions.create(
+            resp = run_async_blocking(groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=1500,
                 response_format={"type": "json_object"},
-            )
+            ))
             raw_text = resp.choices[0].message.content
             parsed = extract_json_from_text(raw_text)
         except Exception:

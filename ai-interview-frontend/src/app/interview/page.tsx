@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef,useMemo } from "react";
 import ResumeUploader from "../resume/page";
 import { useInterview } from "../hooks/useInterview";
 import { useAuth } from "../context/AuthContext";
@@ -328,7 +328,21 @@ const RoadmapDisplay = ({ plan, title }: { plan: any, title?: string }) => {
     </div>
   );
 };
-
+// This component acts like your Debugger—it is immune to the main page's re-renders.
+const IsolatedWhiteboard = React.memo(({ onChange, onAPI }: any) => {
+  return (
+    <div style={{ height: "500px", width: "100%", position: "relative" }}>
+      <ExcalidrawWrapper
+        theme="dark"
+        gridModeEnabled={true}
+        viewModeEnabled={false}
+        zenModeEnabled={false}
+        onChange={onChange}
+        excalidrawAPI={onAPI}
+      />
+    </div>
+  );
+}, () => true); // 🚨 This is the secret: It tells React NEVER to re-render this.
 // Week Card Component with Expand/Collapse
 const WeekCard = ({ week, theme }: any) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -845,8 +859,15 @@ const [currentRound, setCurrentRound] = useState<string>("screening");
 const [roundProgress, setRoundProgress] = useState<any>(null);
 const [isProbeQuestion, setIsProbeQuestion] = useState(false);
 const [showRoundModal, setShowRoundModal] = useState(false);
+const [showWorkspaceGuide, setShowWorkspaceGuide] = useState(true);
   const [nextRoundName, setNextRoundName] = useState("");
   const [whiteboardElements, setWhiteboardElements] = useState<any[]>([]);
+  // Add this near your other states
+  const [excalidrawMounted, setExcalidrawMounted] = useState(false);
+  
+  useEffect(() => {
+    setExcalidrawMounted(true);
+  }, []);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
 const allTestsPassed =
   executionResult?.summary &&
@@ -891,7 +912,18 @@ const normalizeVerdict = (v?: string) => {
   if (!v) return "pending";
   return v.toLowerCase();
 };
-
+const excalidrawInitialData = useMemo(() => ({
+    appState: {
+      viewBackgroundColor: "#171717",
+      currentItemStrokeColor: "#cbe557",
+      currentItemBackgroundColor: "transparent",
+      currentItemStrokeWidth: 2,
+      zoom: { value: 1 },
+      scrollX: 0,
+      scrollY: 0,
+    },
+    elements: [],
+  }), []);
   // Prefer a single API base env var (fallbacks supported)
   const API =
     process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_AI_URL || "";
@@ -2819,10 +2851,8 @@ const RoundTransitionModal = () => {
     [stage, reportViolationWrapper]
   );
 const handleExcalidrawChange = useCallback((elements: readonly any[]) => {
-  const activeElements = elements.filter((el) => !el.isDeleted);
-  // Store in ref without triggering re-renders
-  whiteboardElementsRef.current = activeElements;
-  console.log(`📝 Whiteboard updated: ${activeElements.length} elements`);
+  // ✅ Only update the Ref. DO NOT call any setState here.
+  whiteboardElementsRef.current = elements.filter((el) => !el.isDeleted);
 }, []);
 
 const handleExcalidrawAPI = useCallback((api: any) => {
@@ -3444,6 +3474,201 @@ const RoundIndicator = () => {
     </div>
   );
 };
+
+const InterviewCommandCenter = () => {
+  if (stage !== "running" || !currentQuestion) return null;
+
+  const words = answer.trim() ? answer.trim().split(/\s+/).filter(Boolean).length : 0;
+  const chars = answer.length;
+  const isCode = currentQuestion.expectedAnswerType === "code";
+  const isSystemDesign = currentQuestion.expectedAnswerType === "system_design";
+  const readiness = [
+    {
+      label: isCode ? "Solution drafted" : isSystemDesign ? "Explanation drafted" : "Answer drafted",
+      ready: answer.trim().length > 0,
+    },
+    {
+      label: isCode ? "Code executed" : isSystemDesign ? "Diagram active" : "Voice/text ready",
+      ready: isCode ? codeStatus === "success" : isSystemDesign ? whiteboardElementsRef.current.length > 0 : answer.trim().length >= 80,
+    },
+    {
+      label: "Proctoring healthy",
+      ready: cameraActive && !showViolationWarning && !terminatedByViolation,
+    },
+  ];
+  const readyCount = readiness.filter(item => item.ready).length;
+  const readinessPercent = Math.round((readyCount / readiness.length) * 100);
+  const qualityLabel = chars === 0 ? "Not started" : chars < 180 ? "Needs detail" : chars < 700 ? "Solid draft" : "Detailed";
+
+  return (
+    <div className="mb-6 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4 relative z-10">
+      <div className="rounded-2xl border border-white/10 bg-neutral-900/70 backdrop-blur-xl p-5 shadow-2xl transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white/20 hover:bg-neutral-900/85">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="min-w-0">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-lg border border-[#cbe557]/25 bg-[#cbe557]/10 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-[#cbe557]">
+                <Sparkles size={14} />
+                Live Workspace
+              </span>
+              {currentQuestion.type && (
+                <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold capitalize text-neutral-300">
+                  {String(currentQuestion.type).replace(/_/g, " ")}
+                </span>
+              )}
+              {currentQuestion.difficulty && (
+                <span className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-1.5 text-xs font-bold uppercase text-amber-300">
+                  {currentQuestion.difficulty}
+                </span>
+              )}
+            </div>
+            <h2 className="text-lg md:text-xl font-black text-white tracking-tight">
+              Keep your answer specific, testable, and tied to trade-offs.
+            </h2>
+            <p className="mt-1 text-sm text-neutral-400">
+              Use the checklist to decide when the response is ready to submit.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 lg:min-w-[390px]">
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#cbe557]/25 hover:bg-black/45">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500">
+                <Target size={13} className="text-[#cbe557]" />
+                Ready
+              </div>
+              <div className="mt-2 text-2xl font-black text-white">{readinessPercent}%</div>
+              <div className="mt-2 h-1.5 rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-[#cbe557]" style={{ width: `${readinessPercent}%` }} />
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-blue-300/25 hover:bg-black/45">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500">
+                <Keyboard size={13} className="text-blue-300" />
+                Draft
+              </div>
+              <div className="mt-2 text-2xl font-black text-white">{isCode ? chars : words}</div>
+              <div className="mt-1 text-xs text-neutral-500">{isCode ? "characters" : `${qualityLabel}`}</div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-emerald-300/25 hover:bg-black/45">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500">
+                <Video size={13} className={cameraActive ? "text-emerald-300" : "text-rose-300"} />
+                Integrity
+              </div>
+              <div className={`mt-2 text-sm font-black ${cameraActive ? "text-emerald-300" : "text-rose-300"}`}>
+                {cameraActive ? "Monitoring" : "Camera Off"}
+              </div>
+              <div className="mt-1 text-xs text-neutral-500">{violationCount} warning{violationCount === 1 ? "" : "s"}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+          {readiness.map((item) => (
+            <div
+              key={item.label}
+              className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-sm ${
+                item.ready
+                  ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                  : "border-white/10 bg-white/[0.03] text-neutral-400"
+              }`}
+            >
+              <CheckCircle size={16} className={item.ready ? "text-emerald-300" : "text-neutral-600"} />
+              <span className="font-bold">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-neutral-900/70 backdrop-blur-xl shadow-2xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowWorkspaceGuide(prev => !prev)}
+          className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition-all duration-300 ease-out hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#cbe557]/50"
+        >
+          <div>
+            <div className="text-sm font-black text-white">Response Playbook</div>
+            <div className="text-xs text-neutral-500">A quick rubric while answering</div>
+          </div>
+          <ChevronDown className={`text-neutral-500 transition-transform ${showWorkspaceGuide ? "rotate-180" : ""}`} size={18} />
+        </button>
+        {showWorkspaceGuide && (
+          <div className="px-5 pb-5 space-y-3 border-t border-white/10">
+            {[
+              ["Clarify", "Name assumptions before solving."],
+              ["Structure", "Break the answer into steps or components."],
+              ["Verify", isCode ? "Run code and explain complexity." : "Mention risks, tests, or trade-offs."],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-xl bg-black/30 border border-white/10 p-3">
+                <div className="text-xs font-black uppercase tracking-widest text-[#cbe557]">{title}</div>
+                <div className="mt-1 text-sm text-neutral-300">{body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StickyInterviewActions = () => {
+  if (stage !== "running" || !currentQuestion || terminatedByViolation) return null;
+
+  const hasAnswer = Boolean(answer.trim());
+  const answerType =
+    currentQuestion.expectedAnswerType === "code"
+      ? "Code response"
+      : currentQuestion.expectedAnswerType === "system_design"
+        ? "System design response"
+        : "Verbal response";
+
+  return (
+    <div className="fixed left-1/2 bottom-4 z-40 w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2">
+      <div className="rounded-2xl border border-white/10 bg-neutral-950/90 backdrop-blur-2xl shadow-2xl px-4 py-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`h-10 w-10 rounded-xl flex items-center justify-center border ${
+              hasAnswer ? "bg-[#cbe557] text-black border-[#cbe557]" : "bg-white/5 text-neutral-500 border-white/10"
+            }`}>
+              {currentQuestion.expectedAnswerType === "code" ? <Code size={18} /> : <Edit3 size={18} />}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-black text-white">{answerType}</div>
+              <div className="text-xs text-neutral-500 truncate">
+                {hasAnswer ? `${answer.length} characters ready` : "Draft an answer to enable submission"}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {currentQuestion.expectedAnswerType === "code" && (
+            <button
+              type="button"
+              onClick={handleRunCode}
+              disabled={codeStatus === "running" || !hasAnswer}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-black text-neutral-200 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/10 hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#cbe557]/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+              >
+                {codeStatus === "running" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                Run
+              </button>
+            )}
+            <button
+              type="submit"
+              form="interview-answer-form"
+              disabled={loading || !token || !hasAnswer}
+              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-black transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#cbe557]/50 ${
+                loading || !token || !hasAnswer
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                  : "bg-[#cbe557] text-black hover:-translate-y-0.5 hover:bg-[#b5cc4e] hover:shadow-xl shadow-lg shadow-[#cbe557]/10"
+              }`}
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 // Auto-speak final decision reason
 useEffect(() => {
   if (stage === "done" && finalDecision?.reason && autoReadQuestions) {
@@ -3460,17 +3685,17 @@ useEffect(() => {
   }
 }, [stage, finalDecision, autoReadQuestions, speakText]);
   return (
-<div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white pb-16 relative overflow-hidden">
+<div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-[#cbe557] selection:text-black pb-16 relative overflow-hidden">
   <div className="fixed inset-0 z-0 pointer-events-none">
-    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-    <div className="absolute top-[-5%] right-[10%] w-[400px] h-[400px] bg-[#cbe557]/5 rounded-full blur-[150px]" />
-    <div className="absolute bottom-[10%] left-[5%] w-[350px] h-[350px] bg-indigo-500/5 rounded-full blur-[150px]" />
+    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:36px_36px] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,#000_55%,transparent_100%)]"></div>
+    <div className="absolute top-[-10%] right-[8%] w-[520px] h-[520px] bg-[#cbe557]/[0.06] rounded-full blur-[140px]" />
+    <div className="absolute bottom-[6%] left-[3%] w-[420px] h-[420px] bg-cyan-400/[0.04] rounded-full blur-[150px]" />
   </div>
 
         {/* Fixed Camera View (during interview) (unchanged) */}
     {stage === "running" && (
   <div 
-    className={`fixed top-4 right-4 z-40 w-40 h-30 bg-white rounded-xl shadow-xl border-4 border-white overflow-hidden transform scale-x-[-1] transition-transform duration-300 ${
+    className={`fixed top-4 right-4 z-40 w-44 h-32 bg-neutral-950 rounded-2xl shadow-2xl border border-white/15 overflow-hidden transform scale-x-[-1] transition-all duration-300 ${
       cameraActive ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
     }`}
   >
@@ -3483,28 +3708,31 @@ useEffect(() => {
     />
     {/* hidden canvases */}
     <canvas ref={captureCanvasRef} style={{ display: "none" }} />
-    <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/50 px-2 py-0.5 rounded-full">
+    <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/60 px-2 py-1 rounded-full border border-white/10">
       <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
       <span className="text-[10px] text-white font-bold tracking-wider">
         REC
       </span>
     </div>
+    <div className="absolute bottom-2 left-2 right-2 rounded-lg bg-black/55 px-2 py-1 text-[10px] font-bold text-white/80 border border-white/10">
+      Proctoring active
+    </div>
   </div>
 )}
       {stage === "running" && imageStatus === "pending" && (
-  <div className="fixed top-20 right-4 z-40 bg-amber-50 border-2 border-amber-300 rounded-xl p-4 shadow-xl max-w-xs animate-in fade-in slide-in-from-right-4">
+  <div className="fixed top-24 right-4 z-40 bg-neutral-950/90 border border-amber-300/30 rounded-2xl p-4 shadow-2xl max-w-xs animate-in fade-in slide-in-from-right-4 backdrop-blur-xl">
     <div className="flex items-center gap-3">
       <Loader2 className="animate-spin text-amber-600" size={20} />
       <div>
-        <div className="font-bold text-amber-900 text-sm">Restoring Camera...</div>
-        <div className="text-xs text-amber-700">Reconnecting proctoring system</div>
+        <div className="font-bold text-amber-200 text-sm">Restoring camera</div>
+        <div className="text-xs text-amber-300/70">Reconnecting proctoring system</div>
       </div>
     </div>
   </div>
 )}
 
 
-<div className="max-w-6xl mx-auto px-4 sm:px-6">
+<div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
         {/* Violation banners (unchanged) */}
         {showViolationWarning && !terminatedByViolation && (
           <div className="mb-4 p-4 rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-900 flex items-start gap-3 shadow animate-in fade-in slide-in-from-top-2">
@@ -3904,6 +4132,8 @@ useEffect(() => {
       )}
 
                       <RoundIndicator />
+                      <InterviewCommandCenter />
+                      <StickyInterviewActions />
 
 
         {/* Not Logged In Warning (unchanged) */}
@@ -4288,7 +4518,7 @@ useEffect(() => {
       </div>
 
       {/* ==================== ANSWER FORM AREA ==================== */}
-<div className="bg-neutral-950/50 p-4 md:p-6 border-t border-white/10">        <form onSubmit={handleSubmitAnswer}>
+<div className="bg-neutral-950/50 p-4 md:p-6 border-t border-white/10">        <form id="interview-answer-form" onSubmit={handleSubmitAnswer}>
           {currentQuestion.expectedAnswerType === "code" ? (
             /* ==================== CODE EDITOR - DARK MODE GLASS ==================== */
             <div className="border border-white/10 rounded-2xl overflow-hidden bg-neutral-900 shadow-xl">
@@ -4510,33 +4740,15 @@ useEffect(() => {
               </div>
 
               {/* Canvas Area */}
-              <div
-                style={{
-                  width: "100%",
-                  height: "500px",
-                  position: "relative",
-                  isolation: "isolate",
-                }}
-              >
-                <ExcalidrawWrapper
-                  onChange={handleExcalidrawChange}
-                  excalidrawAPI={handleExcalidrawAPI}
-                  viewModeEnabled={false}
-                  zenModeEnabled={false}
-                  gridModeEnabled={true}
-                  initialData={{
-                    appState: {
-                      viewBackgroundColor: "#171717",
-                      currentItemStrokeColor: "#cbe557",
-                      currentItemBackgroundColor: "transparent",
-                      currentItemStrokeWidth: 2,
-                      zoom: { value: 1 },
-                      scrollX: 0,
-                      scrollY: 0,
-                    },
-                    elements: [],
-                  }}
-                />
+            {/* Canvas Area */}
+           {/* Canvas Area - Now perfectly isolated */}
+              <div className="relative z-[100] isolate border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+                {excalidrawMounted && (
+                  <IsolatedWhiteboard 
+                    onChange={handleExcalidrawChange}
+                    onAPI={handleExcalidrawAPI}
+                  />
+                )}
               </div>
 
               {/* Text Explanation Area */}
@@ -4593,9 +4805,9 @@ useEffect(() => {
               </div>
 
               {/* Input Container */}
-              <div className={`relative rounded-2xl border transition-all bg-neutral-900/50 overflow-hidden shadow-lg ${isListening
+              <div className={`relative rounded-2xl border transition-all duration-300 ease-out bg-neutral-900/50 overflow-hidden shadow-lg ${isListening
                   ? "border-[#cbe557] shadow-[0_0_40px_rgba(203,229,87,0.1)] ring-1 ring-[#cbe557]/20"
-                  : "border-white/10 hover:border-white/20 focus-within:border-[#cbe557] focus-within:ring-1 focus-within:ring-[#cbe557]/20"
+                  : "border-white/10 hover:-translate-y-0.5 hover:border-white/20 hover:bg-neutral-900/70 focus-within:translate-y-0 focus-within:border-[#cbe557] focus-within:ring-1 focus-within:ring-[#cbe557]/20"
                 }`}>
 
                 {/* Textarea */}
@@ -4612,11 +4824,11 @@ useEffect(() => {
                   type="button"
                   onClick={handleMicToggle}
                   disabled={!isSupported}
-                  className={`absolute bottom-5 right-5 p-4 rounded-2xl shadow-2xl transition-all z-30 flex items-center gap-2.5 font-black group/mic ${!isSupported
+                  className={`absolute bottom-5 right-5 p-4 rounded-2xl shadow-2xl transition-all duration-300 ease-out z-30 flex items-center gap-2.5 font-black group/mic focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#cbe557]/60 ${!isSupported
                       ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                       : isListening
-                        ? "bg-red-500 text-white hover:bg-red-600 scale-110 ring-4 ring-red-500/30 animate-pulse"
-                        : "bg-[#cbe557] text-black hover:bg-[#b5cc4e] hover:scale-105 hover:shadow-[0_0_20px_rgba(203,229,87,0.4)]"
+                        ? "bg-red-500 text-white hover:-translate-y-0.5 hover:bg-red-600 scale-105 ring-4 ring-red-500/30"
+                        : "bg-[#cbe557] text-black hover:-translate-y-0.5 hover:bg-[#b5cc4e] hover:scale-[1.03] hover:shadow-[0_0_20px_rgba(203,229,87,0.4)]"
                     }`}
                 >
                   {isListening ? (

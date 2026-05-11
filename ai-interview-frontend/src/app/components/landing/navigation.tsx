@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Menu, X } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "../ui/button"
 
 const navLinks = [
@@ -15,11 +16,15 @@ export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
+  const router = useRouter()
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20)
     }
+
     window.addEventListener("scroll", handleScroll)
+
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
@@ -36,11 +41,13 @@ export function Navigation() {
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14">
+
           {/* Logo */}
           <a href="#" className="flex items-center gap-2">
             <div className="w-6 h-6 rounded bg-[#cbe557] flex items-center justify-center">
               <span className="text-neutral-950 font-bold text-xs">AI</span>
             </div>
+
             <span className="text-sm font-semibold text-white tracking-tight">
               Interview
             </span>
@@ -59,21 +66,26 @@ export function Navigation() {
             ))}
           </div>
 
-          {/* CTA Buttons */}
+          {/* Desktop CTA Buttons */}
           <div className="hidden md:flex items-center gap-3">
+
             <Button
               variant="ghost"
               size="sm"
+              onClick={() => router.push("/Auth/login")}
               className="text-neutral-400 hover:text-white hover:bg-transparent text-sm"
             >
               Log in
             </Button>
+
             <Button
               size="sm"
+              onClick={() => router.push("/auth/signup")}
               className="bg-transparent border border-[#cbe557] text-[#cbe557] hover:bg-[#cbe557]/10 hover:shadow-[0_0_20px_rgba(203,229,87,0.3)] transition-all text-sm"
             >
               Start Interview
             </Button>
+
           </div>
 
           {/* Mobile Menu Button */}
@@ -99,6 +111,7 @@ export function Navigation() {
             className="md:hidden pb-4"
           >
             <div className="flex flex-col gap-1">
+
               {navLinks.map((link) => (
                 <a
                   key={link.name}
@@ -109,20 +122,32 @@ export function Navigation() {
                   {link.name}
                 </a>
               ))}
+
               <div className="flex flex-col gap-2 pt-4 border-t border-white/10 mt-2">
+
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={() => {
+                    router.push("/auth/login")
+                    setIsMobileMenuOpen(false)
+                  }}
                   className="text-neutral-400 hover:text-white hover:bg-transparent justify-start text-sm"
                 >
                   Log in
                 </Button>
+
                 <Button
                   size="sm"
+                  onClick={() => {
+                    router.push("/auth/signup")
+                    setIsMobileMenuOpen(false)
+                  }}
                   className="bg-transparent border border-[#cbe557] text-[#cbe557] hover:bg-[#cbe557]/10 text-sm"
                 >
                   Start Interview
                 </Button>
+
               </div>
             </div>
           </motion.div>

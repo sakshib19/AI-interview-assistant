@@ -71,9 +71,11 @@ async def parse_resume(
         }
     
     try:
-        parsed = ai_parse_resume(raw_text)
+        # ✅ FIXED: Added the 'await' keyword here!
+        parsed = await ai_parse_resume(raw_text)
     except Exception as e:
         logger.exception(f"Resume parsing failed: {e}")
+        # If AI completely fails, it falls back to the regex parser
         parsed = regex_parse_resume(raw_text)
     
     return {"parsed": parsed, "raw_text_length": len(raw_text)}
@@ -109,4 +111,3 @@ def root():
             "Performance analytics"
         ]
     }
-

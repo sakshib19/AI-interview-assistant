@@ -22,6 +22,7 @@ from services.common import (
     normalize_project_name,
     normalize_text,
     redact_pii,
+    run_async_blocking,
     safe_truncate,
     scan_frame_for_violations,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "redact_pii",
     "regex_parse_resume",
     "run_code_in_sandbox",
+    "run_async_blocking",
     "safe_truncate",
     "scan_frame_for_violations",
     "should_verify_resume",

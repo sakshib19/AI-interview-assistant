@@ -4,10 +4,10 @@ import logging
 from typing import Any, Dict
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from google import genai
-from groq import Groq
-from openai import OpenAI
+from groq import AsyncGroq          # Using Async Client
+from openai import AsyncOpenAI      # Using Async Client
 from ultralytics import YOLO
 from deepface import DeepFace
 
@@ -18,20 +18,21 @@ FACE_DB: Dict[str, Dict[str, Any]] = {}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-service")
-
+JUDGE0_URL = "http://localhost:2358/submissions?base64_encoded=false&wait=true"
 load_dotenv()
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
     raise RuntimeError("OPENROUTER_API_KEY not set")
 
-openrouter_client = OpenAI(
+openrouter_client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
 )
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if GROQ_API_KEY:
-    groq_client = Groq(api_key=GROQ_API_KEY)
+    groq_client = AsyncGroq(api_key=GROQ_API_KEY)
 else:
     logger.warning("GROQ_API_KEY not set. Groq-based parsing will fail.")
     groq_client = None
@@ -55,15 +56,25 @@ print("Loading YOLOv8 model (for phone detection)...")
 object_model = YOLO("yolov8s.pt")
 print("All models loaded")
 
+# Kept your exact original models
 RESUME_PARSER_CHAIN = [
     {"provider": "groq", "model": "llama-3.3-70b-versatile"},
     {"provider": "groq", "model": "mixtral-8x7b-32768"},
 ]
 
+# Kept your exact original models
 INTERVIEW_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct",
-    "qwen/qwen-2.5-coder-32b-instruct",
+    # Best quality / reasoning
     "deepseek/deepseek-r1-distill-llama-70b",
+
+    # Strong structured + coding intelligence
+    "qwen/qwen2.5-14b-instruct",
+
+    # Excellent balance of quality + cost
+    "google/gemma-3-12b-it",
+
+    # Cheap reliable fallback
+    "meta-llama/llama-3.1-8b-instruct",
 ]
 
 INTERVIEW_FLOW = [
@@ -255,3 +266,54 @@ INTERVIEW_MODE.update(
 
 EMAIL_RE = re.compile(r"[\w\.-]+@[\w\.-]+\.\w+")
 PHONE_RE = re.compile(r"(\+?\d{1,3}[\s-]?)?(?:\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}|\d{10})")
+
+
+# --- Safe Generation Function (Uses YOUR exact model list) ---
+async def safe_generate_text(prompt: str, system_instruction: str, max_tokens: int = 800) -> str:
+    """
+    Cascades through your chosen INTERVIEW_MODELS to prevent crashes 
+    from 402 errors or malformed NoneType responses.
+    """
+    
+    # Iterate exactly through your model list
+    for model_name in INTERVIEW_MODELS:
+        try:
+            response = await openrouter_client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=max_tokens
+            )
+            
+            # This specific block catches the 'NoneType' error Qwen gave you
+            if response and response.choices and response.choices[0].message:
+                return response.choices[0].message.content
+            else:
+                logger.warning(f"Model {model_name} returned empty data. Falling back to next...")
+                
+        except Exception as e:
+            logger.warning(f"Model {model_name} failed with error: {e}. Falling back to next...")
+
+    # If your entire OpenRouter list fails (e.g., out of credits entirely)
+    # Use Groq as the ultimate emergency net if it's available
+    if groq_client:
+        try:
+            logger.info("OpenRouter exhausted. Using Groq emergency fallback.")
+            response = await groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=max_tokens
+            )
+            if response and response.choices and response.choices[0].message:
+                return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Groq emergency fallback failed: {e}")
+
+    # Prevent the 502 collapse by raising a clear HTTP exception you can handle
+    logger.error("CRITICAL: All models in INTERVIEW_MODELS failed.")
+    raise HTTPException(status_code=502, detail="AI generation failed across all fallback models.")

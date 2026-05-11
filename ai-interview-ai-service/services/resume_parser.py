@@ -1,11 +1,19 @@
 """Resume parsing helpers (LLM-first with regex fallback)."""
 
+import asyncio
 import re
 
 from google.genai import types
 
-from core.config import GOOGLE_API_KEY, logger, google_client, groq_client
+from core.config import GOOGLE_API_KEY, logger, google_client, groq_client, openrouter_client
 from services.common import extract_json_from_text, safe_truncate
+
+# ==========================================
+# FIX 1: DEFINE REGEX PATTERNS FOR FALLBACK
+# ==========================================
+EMAIL_RE = re.compile(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+')
+PHONE_RE = re.compile(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\+?\d{1,3}[-.\s]?\d{9,10}')
+
 
 def build_full_context(parsed: dict) -> str:
     """
@@ -33,11 +41,14 @@ def build_full_context(parsed: dict) -> str:
 
     return "\n".join(parts)
 
-def ai_parse_resume(text: str) -> dict:
+
+# ==========================================
+# FIX 2: MAKE FUNCTION ASYNC TO FIX FASTAPI CRASH
+# ==========================================
+async def ai_parse_resume(text: str) -> dict:
     """
-    Resume parsing using Groq 8B.
+    Resume parsing using Groq 8B or OpenRouter fallback.
     LLM extracts STRUCTURE ONLY.
-    We build full_context_for_prompt ourselves (NO summarization).
     """
     if not text or not text.strip():
         return regex_parse_resume(text)
@@ -81,10 +92,10 @@ def ai_parse_resume(text: str) -> dict:
 
     parsed = None
 
-    # 1️⃣ Groq 8B
+    # 1️⃣ Groq 8B (Using proper await)
     if groq_client:
         try:
-            resp = groq_client.chat.completions.create(
+            resp = await groq_client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
@@ -96,10 +107,10 @@ def ai_parse_resume(text: str) -> dict:
         except Exception as e:
             logger.warning(f"Groq parse failed: {e}")
 
-    # 2️⃣ OpenRouter fallback
-    if not parsed:
+    # 2️⃣ OpenRouter fallback (Using proper await)
+    if not parsed and openrouter_client:
         try:
-            resp = openrouter_client.chat.completions.create(
+            resp = await openrouter_client.chat.completions.create(
                 model="meta-llama/llama-3.3-70b-instruct",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
@@ -109,7 +120,9 @@ def ai_parse_resume(text: str) -> dict:
         except Exception as e:
             logger.warning(f"OpenRouter fallback failed: {e}")
 
+    # 3️⃣ Regex Fallback if AI completely fails
     if not parsed:
+        logger.info("Falling back to regex parser...")
         return regex_parse_resume(text)
 
     # 🔥 BUILD FULL CONTEXT YOURSELF (NO AI)
@@ -120,6 +133,7 @@ def ai_parse_resume(text: str) -> dict:
 
 def regex_parse_resume(text: str) -> dict:
     """Robust regex-based resume parser"""
+    
     # Extract name (first non-header line with 2-4 capitalized words)
     name = None
     for line in text.split('\n')[:10]:
@@ -179,11 +193,10 @@ def regex_parse_resume(text: str) -> dict:
         "name": name or "Candidate",
         "email": email.group(0) if email else None,
         "phone": phone.group(0) if phone else None,
-        "skills": skills[:15],
+        "skills": list(set(skills))[:15], # Deduplicate skills
         "experience_years": None,
         "education": education[:3],
         "projects": projects[:5],
         "work_experience": [],
         "summary": safe_truncate(text.replace('\n', ' ').strip(), 300)
     }
-

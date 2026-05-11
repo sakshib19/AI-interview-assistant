@@ -231,7 +231,7 @@ Pass Threshold: {round_config['pass_threshold'] * 100}%
 - Ask a standard behavioral question using the STAR method.
 - Topics: Adaptability, Time Management, or Motivation.
 - Example: "Describe a situation where you had to learn a new technology very quickly."
-"""
+""" 
 
     elif required_type == "project_discussion" and target_project:
         project_focus = f"""

@@ -1,17 +1,25 @@
 """Code execution and test-case generation utilities."""
 
+import os
 import time
 from typing import Any, Dict, List
-
 import requests
+from dotenv import load_dotenv
 
-from core.config import JUDGE0_URL, logger
+# Standard direct imports for your project structure
+from core.config import logger
 from services.common import extract_json_from_text, llm_call
+
+# Load environment variables (API Keys)
+load_dotenv()
+
+# Glot.io Config
+GLOT_TOKEN = os.getenv("GLOT_API_TOKEN")
 
 
 def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, Any]:
     """
-    Execute code using Judge0 sandbox.
+    Execute code securely using the free Glot.io public API.
 
     Returns:
     {
@@ -26,16 +34,16 @@ def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, 
     """
 
     # ============================================================
-    # 1. Language Mapping (Judge0 IDs)
+    # 1. Language Mapping (Glot.io Configs)
     # ============================================================
     LANG_CONFIG = {
-        "python": 71,
-        "cpp": 54
+        "python": {"lang": "python", "ext": "py"},
+        "cpp": {"lang": "cpp", "ext": "cpp"}
     }
 
-    language_id = LANG_CONFIG.get(language.lower())
+    config = LANG_CONFIG.get(language.lower())
 
-    if not language_id:
+    if not config:
         return {
             "success": False,
             "output": f"Language '{language}' not supported. Only Python and C++ are allowed.",
@@ -49,14 +57,28 @@ def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, 
     # ============================================================
     # 2. Build Payload
     # ============================================================
+    # Glot.io requires a virtual filename to run the code
+    file_name = f"main.{config['ext']}"
+    
     payload = {
-        "language_id": language_id,
-        "source_code": code,
-        "stdin": stdin or ""
+        "stdin": stdin or "",
+        "files": [
+            {
+                "name": file_name,
+                "content": code
+            }
+        ]
     }
 
+    headers = {
+        "Authorization": f"Token {GLOT_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    url = f"https://glot.io/api/run/{config['lang']}/latest"
+
     # ============================================================
-    # 3. Retry Logic
+    # 3. Retry Logic (For Network/API stability)
     # ============================================================
     max_attempts = 3
     backoff = 0.5
@@ -64,14 +86,69 @@ def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, 
 
     for attempt in range(1, max_attempts + 1):
         try:
-            resp = requests.post(
-                JUDGE0_URL,
-                json=payload,
-                timeout=30
-            )
+            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+            status_code = resp.status_code
+            
+            # Parse Response
+            try:
+                raw = resp.json()
+            except Exception:
+                raw = resp.text
+
+            if status_code != 200:
+                logger.error("Glot.io API error %s: %s", status_code, raw)
+                return {
+                    "success": False,
+                    "output": f"Sandbox execution service unavailable: {raw}",
+                    "error_type": "API Error",
+                    "status_code": status_code,
+                    "raw": raw,
+                    "run_stage": None,
+                    "compile_stage": None
+                }
+
+            if not isinstance(raw, dict):
+                return {
+                    "success": False,
+                    "output": str(raw),
+                    "error_type": "API Error",
+                    "status_code": status_code,
+                    "raw": raw,
+                    "run_stage": None,
+                    "compile_stage": None
+                }
+
+            # ========================================================
+            # 4. Glot.io Result Handling
+            # ========================================================
+            # Glot.io cleanly separates stdout, stderr, and container errors.
+            # We combine them into 'output' to match your existing grader expectations.
+            stdout = raw.get("stdout", "")
+            stderr = raw.get("stderr", "")
+            sys_error = raw.get("error", "")
+
+            combined_output = ""
+            error_type = None
+
+            if sys_error or stderr:
+                error_type = "Runtime/Compile Error"
+                combined_output = (sys_error + "\n" + stderr).strip()
+            else:
+                combined_output = stdout.strip()
+
+            return {
+                "success": True,  # True means the API call succeeded, even if the code had a bug
+                "output": combined_output,
+                "error_type": error_type,
+                "status_code": status_code,
+                "raw": raw,
+                "run_stage": raw,       
+                "compile_stage": None   
+            }
+
         except Exception as e:
             logger.warning(
-                "Judge0 request failed (attempt %d/%d): %s",
+                "Glot.io request failed (attempt %d/%d): %s",
                 attempt, max_attempts, e
             )
             last_exception = e
@@ -79,102 +156,11 @@ def run_code_in_sandbox(language: str, code: str, stdin: str = "") -> Dict[str, 
             backoff *= 2
             continue
 
-        status_code = resp.status_code
-
-        # ========================================================
-        # 4. Parse Response
-        # ========================================================
-        try:
-            raw = resp.json()
-        except Exception:
-            raw = resp.text
-
-        if status_code != 200:
-            logger.error("Judge0 API error %s: %s", status_code, raw)
-            return {
-                "success": False,
-                "output": "Sandbox execution service unavailable.",
-                "error_type": "API Error",
-                "status_code": status_code,
-                "raw": raw,
-                "run_stage": None,
-                "compile_stage": None
-            }
-
-        if not isinstance(raw, dict):
-            return {
-                "success": False,
-                "output": str(raw),
-                "error_type": "API Error",
-                "status_code": status_code,
-                "raw": raw,
-                "run_stage": None,
-                "compile_stage": None
-            }
-
-        # ========================================================
-        # 5. Judge0 Result Handling
-        # ========================================================
-        stdout = raw.get("stdout")
-        stderr = raw.get("stderr")
-        compile_output = raw.get("compile_output")
-        status = raw.get("status", {})
-        status_id = status.get("id")
-        status_desc = status.get("description")
-
-        # --------------------------------------------------------
-        # Compilation Error
-        # --------------------------------------------------------
-        if compile_output:
-            return {
-                "success": False,
-                "output": compile_output.strip(),
-                "error_type": "Compilation Error",
-                "status_code": status_code,
-                "raw": raw,
-                "run_stage": raw,
-                "compile_stage": raw
-            }
-
-        # --------------------------------------------------------
-        # Runtime Error
-        # --------------------------------------------------------
-        if stderr:
-            return {
-                "success": False,
-                "output": stderr.strip(),
-                "error_type": "Runtime Error",
-                "status_code": status_code,
-                "raw": raw,
-                "run_stage": raw,
-                "compile_stage": None
-            }
-
-        # --------------------------------------------------------
-        # Success
-        # --------------------------------------------------------
-        output = ""
-
-        if stdout and stdout.strip():
-            output = stdout.strip()
-        else:
-            output = status_desc or ""
-
-        return {
-            "success": True,
-            "output": output,
-            "error_type": None,
-            "status_code": status_code,
-            "raw": raw,
-            "run_stage": raw,
-            "compile_stage": None
-        }
-
     # ============================================================
-    # 6. Exhausted Retries
+    # 5. Exhausted Retries
     # ============================================================
     logger.error(
-        "Judge0 execution failed after %d attempts: %s",
+        "Glot.io execution failed after %d attempts: %s",
         max_attempts,
         last_exception
     )

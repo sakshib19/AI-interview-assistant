@@ -1,7 +1,9 @@
 """Shared utility and scoring helpers."""
 
+import asyncio
 import base64
 import binascii
+import concurrent.futures
 import io
 import json
 import re
@@ -19,10 +21,29 @@ from core.config import (
     MAX_PROMPT_CHARS,
     PHONE_RE,
     TERMINATION_RULES,
+    groq_client,
     logger,
     object_model,
     openrouter_client,
 )
+
+def run_async_blocking(coro):
+    """
+    Run an async SDK call from synchronous service code.
+
+    FastAPI normally runs def routes in a worker thread, where asyncio.run works.
+    During reloads/tests or accidental async callers, there may already be a
+    running loop; in that case run the coroutine in a short-lived thread so a
+    coroutine object never leaks into a JSON response.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(asyncio.run, coro)
+        return future.result()
 
 def extract_text_from_pdf_bytes(b: bytes) -> str:
     text_parts = []
@@ -529,7 +550,7 @@ def analyze_whiteboard_image(base64_img: str) -> str:
 
     for model in VISION_MODELS:
         try:
-            resp = groq_client.chat.completions.create(
+            resp = run_async_blocking(groq_client.chat.completions.create(
                 model=model,
                 messages=[
                     {
@@ -554,7 +575,7 @@ def analyze_whiteboard_image(base64_img: str) -> str:
                 ],
                 temperature=0.1,
                 max_tokens=500,
-            )
+            ))
 
             return resp.choices[0].message.content or ""
 
@@ -585,13 +606,13 @@ def derive_verdict_from_score(score: float) -> str:
         return "strong"     # 75% - 89% is Strong
     return "exceptional"    # 90%+ is Exceptional
 
-def llm_call(prompt: str, temperature=0.3, max_tokens=1200) -> dict:
+async def async_llm_call(prompt: str, temperature=0.3, max_tokens=1200) -> dict:
     """
-    Robust LLM caller that cycles through the INTERVIEW_MODELS list.
+    Robust async LLM caller that cycles through the INTERVIEW_MODELS list.
     """
     for model in INTERVIEW_MODELS:
         try:
-            resp = openrouter_client.chat.completions.create(
+            resp = await openrouter_client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
@@ -616,6 +637,17 @@ def llm_call(prompt: str, temperature=0.3, max_tokens=1200) -> dict:
 
     # If we reach here, all models failed
     return {"ok": False, "error": "all_models_failed"}
+
+
+def llm_call(prompt: str, temperature=0.3, max_tokens=1200) -> dict:
+    """
+    Sync wrapper for existing FastAPI routes.
+
+    The configured OpenRouter client is AsyncOpenAI, so the actual request must
+    be awaited. Most routes in this service are synchronous def endpoints, which
+    FastAPI runs in a worker thread, so asyncio.run is safe there.
+    """
+    return run_async_blocking(async_llm_call(prompt, temperature, max_tokens))
 
 
 # ==========================================

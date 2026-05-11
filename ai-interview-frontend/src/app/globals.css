@@ -223,8 +223,6 @@ body {
 }
 
 .excalidraw__canvas {
-  max-width: none !important;
-  max-height: none !important;
   touch-action: none !important;
 }
 
@@ -235,14 +233,6 @@ body {
   isolation: isolate;
 }
 
-.excalidraw canvas {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
 /* Ensure Excalidraw toolbar is visible and interactive */
 .excalidraw .App-menu_top {
   z-index: 10 !important;
@@ -250,7 +240,12 @@ body {
 
 .excalidraw .layer-ui__wrapper {
   z-index: 5 !important;
-  pointer-events: auto !important;
+  pointer-events: none !important;
+}
+
+/* Ensure actual UI elements (buttons) remain clickable */
+.excalidraw .layer-ui__wrapper > * {
+  pointer-events: auto;
 }
 
 .excalidraw .layer-ui__wrapper__footer {
@@ -762,7 +757,7 @@ pre code {
 }
 
 @layer base {
-  * {
+  *:not(.excalidraw):not(.excalidraw *):not(.excalidraw-container):not(.excalidraw-container *) {
     @apply border-border outline-ring/50;
   }
   body {
