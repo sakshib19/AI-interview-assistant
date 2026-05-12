@@ -2,47 +2,51 @@
 
 import { motion, useInView } from "framer-motion"
 import { useRef } from "react"
-import { Upload, UserCheck, MessageCircle, FileDown } from "lucide-react"
+import { Upload, UserCheck, MessageCircle, FileDown, LucideIcon } from "lucide-react"
 
-const steps = [
+// Extracted types and data for maintainability
+interface Step {
+  icon: LucideIcon;
+  step: string;
+  title: string;
+  description: string;
+}
+
+const steps: Step[] = [
   {
     icon: Upload,
     step: "01",
     title: "Upload Resume",
-    description:
-      "Upload your PDF resume and select your target track: FAANG, Startup, or Enterprise.",
+    description: "Upload your PDF resume and select your target track: FAANG, Startup, or Enterprise.",
   },
   {
     icon: UserCheck,
     step: "02",
     title: "Identity Verification",
-    description:
-      "Complete face registration and environment check to ensure optimal interview conditions.",
+    description: "Complete face registration and environment check to ensure optimal interview conditions.",
   },
   {
     icon: MessageCircle,
     step: "03",
     title: "Adaptive Interview",
-    description:
-      "Engage in a conversational interview covering Coding, System Design, and Behavioral questions.",
+    description: "Engage in a conversational interview covering Coding, System Design, and Behavioral questions.",
   },
   {
     icon: FileDown,
     step: "04",
     title: "Detailed Report",
-    description:
-      "Receive a comprehensive PDF with scores, feedback, and a personalized study roadmap.",
+    description: "Receive a comprehensive PDF with scores, feedback, and a personalized study roadmap.",
   },
 ]
 
 export function HowItWorks() {
-  const ref = useRef(null)
+  const ref = useRef<HTMLDivElement>(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
 
   return (
     <section id="how-it-works" className="relative py-24 overflow-hidden">
       {/* Background */}
-      <div className="absolute inset-0 bg-neutral-950">
+      <div className="absolute inset-0 bg-neutral-950 pointer-events-none" aria-hidden="true">
         <div
           className="absolute inset-0 opacity-20"
           style={{
@@ -80,18 +84,24 @@ export function HowItWorks() {
             >
               {/* Connector Line */}
               {index < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-8 left-full w-full h-px bg-gradient-to-r from-white/10 to-transparent z-0" />
+                <div 
+                  className="hidden lg:block absolute top-8 left-full w-full h-px bg-gradient-to-r from-white/10 to-transparent z-0" 
+                  aria-hidden="true"
+                />
               )}
 
               <div className="relative rounded-xl bg-neutral-900/50 backdrop-blur-sm border border-white/10 p-5 hover:border-[#cbe557]/30 transition-all h-full">
                 {/* Step Number */}
-                <div className="absolute -top-3 left-5 px-2 py-0.5 bg-neutral-900 border border-white/10 rounded text-[10px] font-mono text-neutral-500">
+                <div 
+                  className="absolute -top-3 left-5 px-2 py-0.5 bg-neutral-900 border border-white/10 rounded text-[10px] font-mono text-neutral-500 select-none"
+                  aria-hidden="true"
+                >
                   STEP {step.step}
                 </div>
 
                 <div className="mt-2">
                   <div className="w-10 h-10 rounded-lg bg-neutral-800 border border-white/5 flex items-center justify-center mb-4">
-                    <step.icon className="w-5 h-5 text-[#cbe557]" />
+                    <step.icon className="w-5 h-5 text-[#cbe557]" aria-hidden="true" />
                   </div>
 
                   <h3 className="text-sm font-semibold text-white mb-2">

@@ -2,13 +2,25 @@
 
 import { motion } from "framer-motion"
 import { ArrowRight, Play, Terminal, CheckCircle2 } from "lucide-react"
-import { Button } from "../ui/button"
+import { Button } from "../ui/button" // Ensure this path matches your project structure
+
+// Extracted Data for cleaner JSX
+const evaluationMetrics = [
+  { label: "Technical Accuracy", value: 92 },
+  { label: "Communication", value: 88 },
+  { label: "Code Quality", value: 95 },
+]
+
+const aiFeedbackLogs = [
+  { id: 1, text: "Excellent use of hash map for O(n) time complexity.", type: "positive" },
+  { id: 2, text: "Consider edge cases: empty array, no solution.", type: "neutral" },
+]
 
 export function Hero() {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-14">
-      {/* Dot Matrix Background */}
-      <div className="absolute inset-0 bg-neutral-950">
+      {/* Decorative Background */}
+      <div className="absolute inset-0 bg-neutral-950 pointer-events-none" aria-hidden="true">
         <div
           className="absolute inset-0 opacity-30"
           style={{
@@ -16,7 +28,6 @@ export function Hero() {
             backgroundSize: "24px 24px",
           }}
         />
-        {/* Subtle radial gradient */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-neutral-900/50 rounded-full blur-3xl" />
       </div>
 
@@ -34,8 +45,9 @@ export function Hero() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 text-xs text-neutral-400 mb-8"
+              role="status"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#cbe557]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#cbe557]" aria-hidden="true" />
               Now with real-time code execution
             </motion.div>
 
@@ -54,10 +66,10 @@ export function Hero() {
             <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <Button
                 size="lg"
-                className="bg-transparent border border-[#cbe557] text-[#cbe557] hover:bg-[#cbe557]/10 hover:shadow-[0_0_30px_rgba(203,229,87,0.25)] transition-all duration-300 font-medium"
+                className="bg-transparent border border-[#cbe557] text-[#cbe557] hover:bg-[#cbe557]/10 hover:shadow-[0_0_30px_rgba(203,229,87,0.25)] transition-all duration-300 font-medium group"
               >
                 Start Interview
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button
                 size="lg"
@@ -70,12 +82,13 @@ export function Hero() {
             </div>
           </motion.div>
 
-          {/* Right Visual - MacOS App Mockup */}
+          {/* Right Visual - Interactive App Mockup */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="relative"
+            aria-hidden="true" // Hide complex visual mockup from screen readers
           >
             {/* MacOS Window */}
             <div className="rounded-xl overflow-hidden border border-white/10 bg-neutral-900/50 backdrop-blur-sm shadow-2xl shadow-black/50">
@@ -110,9 +123,9 @@ export function Hero() {
                     <div className="flex">
                       {/* Line Numbers */}
                       <div className="pr-4 text-neutral-600 select-none text-right">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                          <div key={n} className="leading-5">
-                            {n}
+                        {[...Array(10)].map((_, i) => (
+                          <div key={i + 1} className="leading-5">
+                            {i + 1}
                           </div>
                         ))}
                       </div>
@@ -214,11 +227,7 @@ export function Hero() {
                       Evaluation
                     </div>
                     <div className="space-y-3">
-                      {[
-                        { label: "Technical Accuracy", value: 92 },
-                        { label: "Communication", value: 88 },
-                        { label: "Code Quality", value: 95 },
-                      ].map((metric) => (
+                      {evaluationMetrics.map((metric) => (
                         <div key={metric.label}>
                           <div className="flex justify-between text-xs mb-1">
                             <span className="text-neutral-400">
@@ -247,12 +256,16 @@ export function Hero() {
                       AI Feedback
                     </div>
                     <div className="space-y-2">
-                      <div className="p-2.5 bg-neutral-800/50 border border-white/5 rounded text-xs text-neutral-300">
-                        Excellent use of hash map for O(n) time complexity.
-                      </div>
-                      <div className="p-2.5 bg-neutral-800/50 border border-white/5 rounded text-xs text-neutral-400">
-                        Consider edge cases: empty array, no solution.
-                      </div>
+                      {aiFeedbackLogs.map((log) => (
+                        <div
+                          key={log.id}
+                          className={`p-2.5 bg-neutral-800/50 border border-white/5 rounded text-xs ${
+                            log.type === "positive" ? "text-neutral-300" : "text-neutral-400"
+                          }`}
+                        >
+                          {log.text}
+                        </div>
+                      ))}
                     </div>
                   </div>
 

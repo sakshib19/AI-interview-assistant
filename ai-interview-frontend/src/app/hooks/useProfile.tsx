@@ -9,7 +9,7 @@ const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 export type InterviewSession = {
   sessionId: string;
   date: string;
-  
+
   // --- NEW FIELDS FROM BACKEND ---
   violationCount?: number;
   events?: any[]; // Contains the raw violation events
@@ -17,8 +17,8 @@ export type InterviewSession = {
   status?: string;
   // -------------------------------
 
-finalVerdict?: "hire" | "reject" | "maybe" | "pending";
-decisionConfidence?: number;
+  finalVerdict?: "hire" | "reject" | "maybe" | "pending";
+  decisionConfidence?: number;
 
   rounds: {
     screening?: {
@@ -67,13 +67,17 @@ export function useProfile() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || `Failed to fetch dashboard: ${res.status} ${res.statusText}`);
+        throw new Error(
+          errorData.error || `Failed to fetch dashboard: ${res.status} ${res.statusText}`
+        );
       }
 
       return res.json();
     } catch (error) {
       if (error instanceof TypeError && error.message.includes("fetch")) {
-        throw new Error(`Network error: Unable to connect to backend at ${API}. Please ensure the backend server is running.`);
+        throw new Error(
+          `Network error: Unable to connect to backend at ${API}. Please ensure the backend server is running.`
+        );
       }
       throw error;
     }

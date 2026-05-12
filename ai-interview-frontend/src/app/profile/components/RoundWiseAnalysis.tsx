@@ -1,134 +1,164 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Lightbulb, MinusCircle } from "lucide-react";
-import { DetailedRound } from "../page";
+import React from 'react';
+import { 
+  CheckCircle2, 
+  AlertTriangle, 
+  XCircle, 
+  Zap, 
+  TrendingUp, 
+  BookOpen, 
+  AlertCircle,
+  Lightbulb
+} from 'lucide-react';
+import { DetailedRound } from '../page';
 
-type RoundKey = "screening" | "technical" | "behavioral";
-
-type Props = {
-  rounds: Partial<Record<RoundKey, DetailedRound>>;
-};
-
-const roundLabels: Record<RoundKey, string> = {
-  screening: "Screening",
-  technical: "Technical",
-  behavioral: "Behavioral",
-};
-
-function getStatusStyles(status: DetailedRound["status"]) {
-  if (status === "Pass") {
-    return {
-      icon: <CheckCircle2 className="w-4 h-4" />,
-      className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-    };
-  }
-
-  if (status === "Weak") {
-    return {
-      icon: <MinusCircle className="w-4 h-4" />,
-      className: "text-[#cbe557] bg-[#cbe557]/10 border-[#cbe557]/20",
-    };
-  }
-
-  return {
-    icon: <AlertCircle className="w-4 h-4" />,
-    className: "text-red-400 bg-red-400/10 border-red-400/20",
+// Helper to determine color themes based on score
+const getTheme = (score: number) => {
+  if (score >= 80) return { 
+    color: 'text-emerald-400', 
+    bg: 'bg-emerald-400', 
+    border: 'border-emerald-500/20', 
+    badge: 'bg-emerald-500/10',
+    icon: <CheckCircle2 size={16} />
   };
-}
+  if (score >= 60) return { 
+    color: 'text-amber-400', 
+    bg: 'bg-amber-400', 
+    border: 'border-amber-500/20', 
+    badge: 'bg-amber-500/10',
+    icon: <AlertTriangle size={16} />
+  };
+  return { 
+    color: 'text-red-400', 
+    bg: 'bg-red-400', 
+    border: 'border-red-500/20', 
+    badge: 'bg-red-500/10',
+    icon: <XCircle size={16} />
+  };
+};
 
-export default function RoundWiseAnalysis({ rounds }: Props) {
-  const entries = (Object.keys(roundLabels) as RoundKey[])
-    .map((key) => [key, rounds[key]] as const)
-    .filter((entry): entry is readonly [RoundKey, DetailedRound] => Boolean(entry[1]));
-
-  if (entries.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-white/10 bg-neutral-900/30 p-8 text-center">
-        <p className="text-sm text-neutral-500">No round-wise analysis available for this session.</p>
+const RoundCard = ({ title, data, icon: Icon }: { title: string, data?: DetailedRound, icon: any }) => {
+  if (!data) return (
+    <div className="bg-neutral-900/20 border border-white/5 rounded-2xl p-6 mb-4 flex items-center justify-between opacity-50">
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-white/5 rounded-lg"><Icon size={20} className="text-neutral-500" /></div>
+        <span className="font-semibold text-neutral-400">{title} Round</span>
       </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-      {entries.map(([roundName, round]) => {
-        const status = getStatusStyles(round.status);
-        const scorePercent = Math.round(round.score * 100);
-
-        return (
-          <article
-            key={roundName}
-            className="rounded-xl border border-white/10 bg-neutral-950/40 p-5 space-y-5"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-base font-bold text-white">{roundLabels[roundName]} Round</h3>
-                <p className="mt-1 text-sm text-neutral-400">{round.feedback}</p>
-              </div>
-              <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-black ${status.className}`}>
-                {status.icon}
-                {round.status}
-              </span>
-            </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between text-xs font-bold text-neutral-400">
-                <span>Score</span>
-                <span className="text-white">{scorePercent}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-neutral-800">
-                <div
-                  className="h-2 rounded-full bg-[#cbe557] transition-all"
-                  style={{ width: `${Math.max(0, Math.min(scorePercent, 100))}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ListBlock title="Strengths" items={round.strengths} tone="emerald" />
-              <ListBlock title="Areas to Improve" items={round.weaknesses} tone="red" />
-            </div>
-
-            <div className="rounded-lg border border-indigo-400/20 bg-indigo-400/10 p-4">
-              <div className="mb-2 flex items-center gap-2 text-sm font-bold text-indigo-300">
-                <Lightbulb className="w-4 h-4" />
-                Recommendation
-              </div>
-              <p className="text-sm leading-relaxed text-neutral-300">{round.recommendation}</p>
-            </div>
-          </article>
-        );
-      })}
+      <span className="text-xs uppercase tracking-widest font-bold text-neutral-600">Pending</span>
     </div>
   );
-}
 
-function ListBlock({
-  title,
-  items,
-  tone,
-}: {
-  title: string;
-  items: string[];
-  tone: "emerald" | "red";
-}) {
-  const titleClass = tone === "emerald" ? "text-emerald-400" : "text-red-400";
+  const percentage = Math.round(data.score * 100);
+  const theme = getTheme(percentage);
 
   return (
-    <div>
-      <p className={`mb-2 text-xs font-black uppercase tracking-wider ${titleClass}`}>{title}</p>
-      {items.length > 0 ? (
-        <ul className="space-y-2 text-sm text-neutral-300">
-          {items.map((item, index) => (
-            <li key={`${item}-${index}`} className="flex gap-2">
-              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-500" />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm italic text-neutral-600">Not available</p>
+    <div className={`relative overflow-hidden bg-neutral-900/40 border border-white/5 rounded-2xl p-6 mb-6 transition-all duration-300 hover:border-white/10 group`}>
+      
+      {/* Decorative Gradient Background */}
+      <div className={`absolute top-0 right-0 w-64 h-64 ${theme.bg} opacity-[0.03] blur-[80px] rounded-full pointer-events-none -mr-10 -mt-10`} />
+
+      {/* --- HEADER: Score & Status --- */}
+      <div className="flex justify-between items-start mb-6 relative z-10">
+        <div className="flex items-center gap-4">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-white/5 border border-white/5 shadow-inner`}>
+             <Icon size={22} className={title === 'Screening' ? 'text-[#cbe557]' : title === 'Technical' ? 'text-blue-400' : 'text-purple-400'} />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+              {title}
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${theme.border} ${theme.color} ${theme.badge} flex items-center gap-1`}>
+                {theme.icon} {data.status}
+              </span>
+            </h3>
+            <p className="text-xs text-neutral-500 font-medium uppercase tracking-wider mt-1">Automated Analysis</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-end">
+          <span className={`text-3xl font-black ${theme.color} tracking-tighter`}>{percentage}%</span>
+          <span className="text-xs text-neutral-500 font-medium">Score</span>
+        </div>
+      </div>
+
+      {/* --- PROGRESS BAR --- */}
+      <div className="w-full h-1.5 bg-neutral-800/50 rounded-full mb-6 overflow-hidden relative">
+        <div 
+          className={`h-full ${theme.bg} shadow-[0_0_15px_rgba(0,0,0,0.5)] transition-all duration-1000 ease-out`} 
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+
+      {/* --- FEEDBACK SECTION --- */}
+      <div className="mb-6 bg-black/20 border border-white/5 rounded-xl p-4 relative">
+        <div className={`absolute top-0 left-0 bottom-0 w-1 rounded-l-xl ${theme.bg} opacity-50`} />
+        <p className="text-sm text-neutral-300 leading-relaxed pl-2 italic">
+          "{data.feedback}"
+        </p>
+      </div>
+
+      {/* --- DATA MERGE: SWOT Analysis --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+        
+        {/* Strengths Column */}
+        <div>
+          <h4 className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">
+            <TrendingUp size={14} className="text-emerald-500" /> Key Strengths
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {data.strengths.length > 0 ? (
+              data.strengths.map((str, i) => (
+                <span key={i} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/5 text-emerald-400 border border-emerald-500/10">
+                  {str}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-neutral-600 italic">No specific strengths recorded</span>
+            )}
+          </div>
+        </div>
+
+        {/* Weaknesses Column */}
+        <div>
+           <h4 className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">
+             <AlertCircle size={14} className="text-amber-500" /> Areas for Improvement
+           </h4>
+          <div className="flex flex-wrap gap-2">
+            {data.weaknesses.length > 0 ? (
+              data.weaknesses.map((wk, i) => (
+                <span key={i} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/5 text-red-400 border border-red-500/10">
+                  {wk}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-neutral-600 italic">No critical issues found</span>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* --- RECOMMENDATION FOOTER --- */}
+      {data.recommendation && (
+        <div className="mt-6 pt-4 border-t border-white/5 flex items-start gap-3">
+          <div className="p-1.5 bg-[#cbe557]/10 rounded-full mt-0.5 shrink-0 animate-pulse-slow">
+             <Lightbulb size={14} className="text-[#cbe557]" />
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-[#cbe557] uppercase tracking-wider block mb-1">AI Action Item</span>
+            <p className="text-sm text-neutral-400 leading-snug">{data.recommendation}</p>
+          </div>
+        </div>
       )}
+    </div>
+  );
+};
+
+export default function RoundWiseAnalysis({ rounds }: { rounds: any }) {
+  return (
+    <div className="flex flex-col w-full">
+      <RoundCard title="Screening" data={rounds.screening} icon={Zap} />
+      <RoundCard title="Technical" data={rounds.technical} icon={TrendingUp} />
+      <RoundCard title="Behavioral" data={rounds.behavioral} icon={BookOpen} />
     </div>
   );
 }

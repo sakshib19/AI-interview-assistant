@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -193,43 +195,46 @@ export const useWebSpeech = () => {
     };
   }, [clearRestartTimer]);
 
-  const startListening = useCallback((callback?: (text: string) => void) => {
-    const recognition = recognitionRef.current;
-    if (!recognition) {
-      setError("Speech recognition is not initialized.");
-      return;
-    }
+  const startListening = useCallback(
+    (callback?: (text: string) => void) => {
+      const recognition = recognitionRef.current;
+      if (!recognition) {
+        setError("Speech recognition is not initialized.");
+        return;
+      }
 
-    onTranscriptCallback.current = callback || null;
-    shouldListenRef.current = true;
+      onTranscriptCallback.current = callback || null;
+      shouldListenRef.current = true;
 
-    if (isRunningRef.current) {
-      setIsListening(true);
-      return;
-    }
-
-    try {
-      clearRestartTimer();
-      setError(null);
-      setTranscript("");
-      setInterimTranscript("");
-      restartAttemptsRef.current = 0;
-      recognition.start();
-      console.log("Speech recognition started");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.toLowerCase().includes("already")) {
-        isRunningRef.current = true;
+      if (isRunningRef.current) {
         setIsListening(true);
         return;
       }
 
-      shouldListenRef.current = false;
-      setIsListening(false);
-      setError("Failed to start speech recognition.");
-      console.error(err);
-    }
-  }, [clearRestartTimer]);
+      try {
+        clearRestartTimer();
+        setError(null);
+        setTranscript("");
+        setInterimTranscript("");
+        restartAttemptsRef.current = 0;
+        recognition.start();
+        console.log("Speech recognition started");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.toLowerCase().includes("already")) {
+          isRunningRef.current = true;
+          setIsListening(true);
+          return;
+        }
+
+        shouldListenRef.current = false;
+        setIsListening(false);
+        setError("Failed to start speech recognition.");
+        console.error(err);
+      }
+    },
+    [clearRestartTimer]
+  );
 
   const stopListening = useCallback(() => {
     shouldListenRef.current = false;

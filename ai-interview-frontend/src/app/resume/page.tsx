@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   Upload, FileText, X, CheckCircle, Briefcase, GraduationCap,
   Mail, Phone, Award, Building, Zap, Code, ChevronRight, Check, FileSearch, Cpu, LineChart,
-  ShieldCheck, User, FolderGit2, AlertCircle, RefreshCw, ClipboardCheck, Layers
+  ShieldCheck, User, FolderGit2, AlertCircle, RefreshCw, ClipboardCheck, Layers, LogOut
 } from "lucide-react";
 
 // --- TYPES ---
@@ -35,7 +35,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
   const { onReady, onStart } = props;
   const router = useRouter();
   const API = process.env.NEXT_PUBLIC_API_URL ?? "";
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   // --- STATE ---
   const [file, setFile] = useState<File | null>(null);
@@ -445,6 +445,21 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
             </div>
 
             <div className="flex items-center gap-3 w-full sm:w-auto">
+              
+              {/* Logout Button */}
+              {token && (
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex items-center justify-center gap-2 p-3 sm:px-4 sm:py-3 rounded-xl text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 hover:text-rose-300 transition-colors border border-rose-500/20"
+                  title="Log out"
+                >
+                  <LogOut size={18} />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              )}
+
+              {/* Clear Data Button */}
               {(file || parsed) && (
                 <button
                   type="button"
@@ -455,6 +470,7 @@ export default function ResumeUploader(props: ResumeUploaderProps) {
                 </button>
               )}
 
+              {/* Upload Button */}
               <button
                 type="button"
                 onClick={() => { if (handleAuthCheck()) fileInputRef.current?.click(); }}

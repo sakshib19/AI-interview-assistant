@@ -1,24 +1,44 @@
-// hooks/useInterview.tsx
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
+/* -------------------------------------------------------------------------- */
+/*                                   TYPES                                    */
+/* -------------------------------------------------------------------------- */
+
+export type InterviewDifficulty = "easy" | "medium" | "hard" | "expert";
+export type AnswerType =
+  | "short"
+  | "medium"
+  | "code"
+  | "architectural"
+  | "system_design";
+
+export type InterviewStage = "idle" | "uploading" | "running" | "done";
+
+export type ConversationMessage = {
+  role: "assistant" | "user";
+  text: string;
+};
+
 export type InterviewQuestion = {
-  questionId?: string;
+  questionId: string;
   questionText: string;
+  type?: string;
   target_project?: string;
   technology_focus?: string;
-  expectedAnswerType?: "short" | "medium" | "code" | "architectural" | "system_design";
-  difficulty?: "easy" | "medium" | "hard" | "expert";
+  expectedAnswerType?: AnswerType;
+  difficulty?: InterviewDifficulty;
   ideal_outline?: string;
   ideal_answer_outline?: string;
   red_flags?: string[];
   action_type?: string;
   confidence?: number;
-    is_probe?: boolean;
+  is_probe?: boolean;
   round?: string;
-  // keep index signature so we can attach raw / coding_challenge etc.
+  raw?: any;
+  coding_challenge?: any;
   [k: string]: any;
 };
 
@@ -51,8 +71,15 @@ export type InterviewAnswerResult = {
   metadata?: any;
   technical_diagnosis?: {
     win?: string;
-    gap?: { issue?: string; observed?: string; expected_level?: string };
-    fix?: { action?: string; resource_type?: string };
+    gap?: {
+      issue?: string;
+      observed?: string;
+      expected_level?: string;
+    };
+    fix?: {
+      action?: string;
+      resource_type?: string;
+    };
     sub_topics?: any[];
   };
 };
@@ -63,607 +90,772 @@ export type PerformanceMetrics = {
   last_score: number | null;
   consecutive_fails: number;
   consecutive_wins: number;
-trend: string;
+  trend: string;
   confidence: number;
   score_variance?: number;
 };
-const normalizeType = (t: any) => t || "conceptual";
+
+export type InterviewHistoryItem = {
+  q: InterviewQuestion;
+  a?: string;
+  result?: InterviewAnswerResult;
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                 CONSTANTS                                  */
+/* -------------------------------------------------------------------------- */
 
 const API = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+const SESSION_STORAGE_KEY = "active_interview_session";
+
+/* -------------------------------------------------------------------------- */
+/*                                  HELPERS                                   */
+/* -------------------------------------------------------------------------- */
+
+const normalizeType = (type?: string | null): string => {
+  return type?.trim() || "conceptual";
+};
+
+const normalizeQuestion = (questionData: any): InterviewQuestion => {
+  const questionId =
+    questionData?.qaId ||
+    questionData?.questionId ||
+    questionData?.id ||
+    questionData?._id ||
+    crypto.randomUUID();
+
+  return {
+    questionId,
+    questionText:
+      questionData?.question ||
+      questionData?.questionText ||
+      questionData?.followup_question ||
+      questionData?.follow_up_question ||
+      "",
+    type: normalizeType(questionData?.type),
+    target_project: questionData?.target_project,
+    technology_focus: questionData?.technology_focus,
+    expectedAnswerType:
+      questionData?.expected_answer_type ||
+      questionData?.expectedAnswerType ||
+      "medium",
+    difficulty: questionData?.difficulty || "medium",
+    ideal_outline:
+      questionData?.ideal_answer_outline ||
+      questionData?.ideal_outline ||
+      "",
+    ideal_answer_outline:
+      questionData?.ideal_answer_outline ||
+      questionData?.ideal_outline ||
+      "",
+    red_flags: questionData?.red_flags || [],
+    confidence: questionData?.confidence,
+    is_probe: questionData?.is_probe || false,
+    round: questionData?.round || "screening",
+    raw: questionData,
+    coding_challenge:
+      questionData?.coding_challenge ||
+      questionData?.challenge ||
+      null,
+  };
+};
+
+const safeJson = async (res: Response) => {
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                               CUSTOM HOOK                                  */
+/* -------------------------------------------------------------------------- */
 
 export function useInterview() {
   const { token } = useAuth();
+
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [stage, setStage] = useState<"idle" | "uploading" | "running" | "done">("idle");
-  const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
+  const [stage, setStage] = useState<InterviewStage>("idle");
+  const [currentQuestion, setCurrentQuestion] =
+    useState<InterviewQuestion | null>(null);
 
-  // Store feedback and performance metrics
-  const [lastFeedback, setLastFeedback] = useState<string | null>(null);
-  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics | null>(null);
-
-  const [history, setHistory] = useState<Array<{
-    q: InterviewQuestion;
-    a?: any;
-    result?: InterviewAnswerResult;
-  }>>([]);
+  const [history, setHistory] = useState<InterviewHistoryItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [resumeParsed, setResumeParsed] = useState<any | null>(null);
   const [resumeFileUrl, setResumeFileUrl] = useState<string | null>(null);
+
+  const [lastFeedback, setLastFeedback] = useState<string | null>(null);
+  const [performanceMetrics, setPerformanceMetrics] =
+    useState<PerformanceMetrics | null>(null);
+
   const [finalDecision, setFinalDecision] = useState<any | null>(null);
 
- // REPLACE THIS FUNCTION in hooks/useInterview.tsx
+  /* ------------------------------------------------------------------------ */
+  /*                               AUTH HEADERS                               */
+  /* ------------------------------------------------------------------------ */
 
-const onResumeReady = useCallback((parsed: any, fileUrl?: string | null) => {
-    console.log("📄 Resume Loaded in Hook:", parsed);
+  const authHeaders = useMemo(() => {
+    if (!token) return {};
 
-    // 🚨 CRITICAL FIX: If the backend provided the rich context, 
-    // overwrite the short summary with it immediately.
-    // This ensures that startInterview and submitAnswer always use the full text.
-    if (parsed && (parsed as any).full_context_for_prompt) {
-        console.log("✅ Upgrading Resume Summary to Rich Context");
-        parsed.summary = (parsed as any).full_context_for_prompt;
-    }
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  }, [token]);
 
-    setResumeParsed(parsed);
-    if (fileUrl) setResumeFileUrl(fileUrl);
-    setStage("idle");
-}, []);
+  /* ------------------------------------------------------------------------ */
+  /*                             HISTORY BUILDERS                             */
+  /* ------------------------------------------------------------------------ */
 
-  const buildConversationFromHistory = useCallback(() => {
-    const conv: Array<{ role: "assistant" | "user"; text: string }> = [];
-    for (const entry of history) {
-      if (entry.q?.questionText) conv.push({ role: "assistant", text: entry.q.questionText });
-      if (entry.a) conv.push({ role: "user", text: String(entry.a) });
-    }
-    return conv;
+  const buildConversation = useCallback((): ConversationMessage[] => {
+    return history.flatMap((item) => {
+      const messages: ConversationMessage[] = [];
+
+      if (item.q?.questionText) {
+        messages.push({
+          role: "assistant",
+          text: item.q.questionText,
+        });
+      }
+
+      if (item.a) {
+        messages.push({
+          role: "user",
+          text: String(item.a),
+        });
+      }
+
+      return messages;
+    });
   }, [history]);
 
-const buildQuestionHistory = useCallback(() => {
-  return history.map(h => ({
-    question: h.q.questionText,
-    type: normalizeType(h.q.type),   // 🔧 FIX
-    target_project: h.q.target_project || "general",
-    score: h.result?.overall_score ?? h.result?.score ?? null
-  }));
-}, [history]);
+  const buildQuestionHistory = useCallback(() => {
+    return history.map((item) => ({
+      question: item.q.questionText,
+      type: normalizeType(item.q.type),
+      target_project: item.q.target_project || "general",
+      score:
+        item.result?.overall_score ??
+        item.result?.score ??
+        null,
+    }));
+  }, [history]);
 
+  /* ------------------------------------------------------------------------ */
+  /*                              API REQUESTER                               */
+  /* ------------------------------------------------------------------------ */
 
+  const apiRequest = useCallback(
+    async <T = any>(
+      endpoint: string,
+      options: RequestInit = {}
+    ): Promise<T> => {
+      const response = await fetch(`${API}${endpoint}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+          ...(options.headers || {}),
+        },
+      });
 
-  const getAuthHeaders = useCallback(() => {
-    if (!token) return {};
-    return { Authorization: `Bearer ${token}` };
-  }, [token]);
+      const body = await safeJson(response);
 
-  /**
-   * reportViolation(reason)
-   * - always POSTs to /interview/violation with { sessionId, reason }
-   * - returns the parsed server response (or throws for network errors)
-   * - caller should handle or ignore failures as appropriate
-   */
-  const reportViolation = useCallback(async (reason: string) => {
-    if (!sessionId) {
-      // No active session: return a consistent shape so callers can proceed gracefully.
-      return { ok: false, error: "no_session", message: "No active sessionId" };
-    }
+      if (!response.ok) {
+        throw new Error(
+          body?.message ||
+            body?.error ||
+            "Something went wrong"
+        );
+      }
 
-    try {
-      const res = await fetch(`${API}/interview/violation`, {
+      return body;
+    },
+    [authHeaders]
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                             RESUME HANDLING                              */
+  /* ------------------------------------------------------------------------ */
+
+  const onResumeReady = useCallback(
+    (parsed: any, fileUrl?: string | null) => {
+      if (parsed?.full_context_for_prompt) {
+        parsed.summary = parsed.full_context_for_prompt;
+      }
+
+      setResumeParsed(parsed);
+
+      if (fileUrl) {
+        setResumeFileUrl(fileUrl);
+      }
+
+      setStage("idle");
+    },
+    []
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                              REPORT VIOLATION                            */
+  /* ------------------------------------------------------------------------ */
+
+  const reportViolation = useCallback(
+    async (reason: string) => {
+      if (!sessionId) {
+        return {
+          ok: false,
+          error: "NO_SESSION",
+        };
+      }
+
+      return apiRequest("/interview/violation", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           sessionId,
-          reason
-        })
+          reason,
+        }),
       });
+    },
+    [apiRequest, sessionId]
+  );
 
-      // Try to parse JSON body safely
-      const body = await res.json().catch(() => ({}));
+  /* ------------------------------------------------------------------------ */
+  /*                              START INTERVIEW                             */
+  /* ------------------------------------------------------------------------ */
 
-      // Return server body so UI can inspect / show messages if needed.
-      return body;
-    } catch (e: any) {
-      // Network-level error — bubble up so callers can decide what to do.
-      console.warn("reportViolation network error", e?.message ?? e);
-      throw e;
-    }
-  }, [sessionId, getAuthHeaders]);
-
-  const startInterview = useCallback(async (
-    jobTitle?: string,
-    difficulty?: string,
-    techStack?: string,
-    existingSessionId?: string, // NEW: Accept existing session ID
-    existingQuestionData?: any,
-    config?: { role_title?: string; company_style?: string }
-      // NEW: Accept existing question data
-  ) => {
-    setError(null);
-    setLastFeedback(null);
-    setPerformanceMetrics(null);
-
-    // HYDRATION BRANCH: if caller provided sessionId + first question (page-level start)
-    if (existingSessionId && existingQuestionData) {
-      console.log("Hydrating interview state from existing session:", existingSessionId);
-      console.log("🔥 startInterview (hydration): existingQuestionData:", existingQuestionData);
-
-      setSessionId(existingSessionId);
-
-      // Normalize the question data passed from the Page
-      const backendId = existingQuestionData.qaId || existingQuestionData.questionId;
-      const normalizedQuestion: InterviewQuestion = {
-        questionId: backendId || `q_${Date.now()}`,
-        questionText: existingQuestionData.question || existingQuestionData.questionText || "",
-        type: normalizeType(existingQuestionData.type),
-        target_project: existingQuestionData.target_project,
-        technology_focus: existingQuestionData.technology_focus,
-        expectedAnswerType: existingQuestionData.expected_answer_type || existingQuestionData.expectedAnswerType || "medium",
-        difficulty: existingQuestionData.difficulty || "medium",
-        ideal_outline: existingQuestionData.ideal_answer_outline || existingQuestionData.ideal_outline || "",
-        red_flags: existingQuestionData.red_flags || [],
-        confidence: existingQuestionData.confidence,
-          is_probe: existingQuestionData.is_probe || false,
-  round: existingQuestionData.round || "screening",
-
-      };
-console.log("🧭 CURRENT QUESTION TYPE:", currentQuestion?.type);
-
-      // Preserve full backend payload so nested fields (like coding_challenge/test_cases) are available to the UI
-      setCurrentQuestion({
-        ...normalizedQuestion,
-        raw: existingQuestionData,
-        coding_challenge: existingQuestionData.coding_challenge || existingQuestionData.challenge || existingQuestionData
-      });
-
-      setStage("running");
-      setLoading(false);
-      return; // EXIT EARLY - Do not fetch again
-    }
-
-    if (!token) {
-      setError("Please log in to start an interview.");
-      return;
-    }
-
-    if (!resumeParsed && !resumeFileUrl) {
-      setError("Please upload your resume first.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const payload: any = {
-        resume_summary: resumeParsed?.summary ?? "",
-        parsed_resume: resumeParsed ?? {},
-        retrieved_chunks: [],
-        allow_pii: false,
-        role_title: config?.role_title || jobTitle || "Backend Engineer",
-        company_style: config?.company_style || "FAANG"
-      };
-      if (resumeFileUrl) payload.resume_url = resumeFileUrl;
-
-      const res = await fetch(`${API}/interview/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json();
-
-      if (!res.ok) {
-        throw new Error(body?.message || body?.error || JSON.stringify(body) || "Failed to start interview");
+  const startInterview = useCallback(
+    async (
+      jobTitle?: string,
+      difficulty?: string,
+      techStack?: string,
+      existingSessionId?: string,
+      existingQuestionData?: any,
+      config?: {
+        role_title?: string;
+        company_style?: string;
       }
-
-      setSessionId(body.sessionId || body.session_id || null);
-if (body.sessionId) localStorage.setItem("active_interview_session", body.sessionId);
-      // Handle different response formats
-      const questionData = body.firstQuestion || body.question || body.data?.question || body.parsed;
-
-      // Debug: show raw question data returned from server
-      console.log("🔥 startInterview: raw questionData:", questionData);
-
-      if (questionData) {
-        // FIX: Prioritize 'qaId' from backend, fall back to 'questionId'
-        const backendId = questionData.qaId || questionData.questionId;
-
-        const normalizedQuestion: InterviewQuestion = {
-          questionId: backendId || `q_${Date.now()}`, // Fallback only if backend fails
-          questionText: questionData.question || questionData.questionText || "",
-          type: normalizeType(questionData.type), 
-
-          target_project: questionData.target_project,
-          technology_focus: questionData.technology_focus,
-          expectedAnswerType: question_data_or_default(questionData),
-          difficulty: questionData.difficulty || "medium",
-          ideal_outline: questionData.ideal_answer_outline || questionData.ideal_outline || "",
-          red_flags: questionData.red_flags || [],
-          confidence: questionData.confidence,
-           is_probe: questionData.is_probe || false,
-    round: questionData.round || body.round_info?.current || "screening",
-        };
-
-        // Preserve raw/coding_challenge so UI can access nested fields like test_cases/starter_code
-        setCurrentQuestion({
-          ...normalizedQuestion,
-          raw: questionData,
-          coding_challenge: questionData.coding_challenge || questionData.challenge || questionData
-        });
-        setStage("running");
-      } else {
-        setStage("idle");
-      }
-
-      setHistory([]);
-      setFinalDecision(null);
-
-    } catch (err: any) {
-      setError(err.message || String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [resumeParsed, resumeFileUrl, token, getAuthHeaders]);
-
-  // Helper used above to get expectedAnswerType with safe fallback
-  function question_data_or_default(q: any) {
-    return q.expected_answer_type || q.expectedAnswerType || "medium";
-  }
-const fetchHint = useCallback(async (questionText: string, type: string,currentAnswer: string = "") => {
-    if (!sessionId || !token || !currentQuestion?.questionId) return null;
-    
-    try {
-      const res = await fetch(`${API}/interview/hint`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ 
-            sessionId, 
-            questionId: currentQuestion.questionId,
-            questionText,
-            type ,
-            currentAnswer
-        })
-      });
-      const data = await res.json();
-      return data.hint;
-    } catch (e) {
-      console.error("Hint fetch error:", e);
-      return null;
-    }
-  }, [sessionId, token, currentQuestion, getAuthHeaders]);
-const submitAnswer = useCallback(
-  async (candidateAnswerOrPayload: any, questionIdArg?: string) => {
-    setError(null);
-    setLastFeedback(null);
-
-    if (!token) { setError("Please log in to submit an answer."); return null; }
-    if (!sessionId || !currentQuestion) { setError("Session not initialized or no active question"); return null; }
-
-    setLoading(true);
-    try {
-      // Normalize incoming arg
-      let candidateAnswer: string;
-      let code_execution_result = null;
-      let question_type = "text";
-      let whiteboard_elements = null;  
-      let whiteboard_snapshot = null;      // 🆕 Added
-        let user_time_complexity = null;       // 🆕 Added
-        let user_space_complexity = null;      // 🆕 Added
-      let playback_history = null;
-      if (typeof candidateAnswerOrPayload === "string") {
-        candidateAnswer = candidateAnswerOrPayload;
-      } else {
-        // payload object from page
-        candidateAnswer = candidateAnswerOrPayload.answer || candidateAnswerOrPayload.candidateAnswer || "";
-        code_execution_result = candidateAnswerOrPayload.code_execution_result ?? null;
-        question_type = candidateAnswerOrPayload.question_type || "text";
-        whiteboard_elements = candidateAnswerOrPayload.whiteboard_elements || null;
-        whiteboard_snapshot = candidateAnswerOrPayload.whiteboard_snapshot || null;
-          user_time_complexity = candidateAnswerOrPayload.user_time_complexity || null;
-          user_space_complexity = candidateAnswerOrPayload.user_space_complexity || null;
-          playback_history = candidateAnswerOrPayload.playback_history || null; // 👈 NEW: Extract from payload
-      }
-
-      const conv = buildConversationFromHistory();
-      conv.push({ role: "assistant", text: currentQuestion.questionText });
-      conv.push({ role: "user", text: candidateAnswer });
-
-      const questionHistory = buildQuestionHistory();
-
-      const payload = {
-        sessionId,
-        qaId: currentQuestion.questionId,
-        questionId: currentQuestion.questionId,
-        questionText: currentQuestion.questionText,
-        ideal_outline: currentQuestion.ideal_outline || currentQuestion.ideal_answer_outline || "",
-        candidateAnswer,
-        candidate_answer: candidateAnswer,
-        resume_summary: resumeParsed?.summary || "",
-        retrieved_chunks: [],
-        conversation: conv,
-        question_history: questionHistory,
-        allow_pii: false,
-        question_type, // 👈 NEW
-        code_execution_result, // 👈 NEW
-        whiteboard_elements,
-        whiteboard_snapshot,
-          user_time_complexity,
-          user_space_complexity,
-          playback_history
-      };
-
-      const res = await fetch(`${API}/interview/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-      });
-
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message || body?.error || JSON.stringify(body) || "Answer submit failed");
-
-      // Parse result with multiple fallback paths
-      const rawResult = body.result || body.validated || body;
-
-      const result: InterviewAnswerResult = {
-        score: rawResult.overall_score || rawResult.score,
-        overall_score: rawResult.overall_score || rawResult.score,
-        rubricScores: rawResult.rubric_scores || rawResult.rubricScores,
-        dimension_scores: rawResult.dimension_scores,
-        confidence: rawResult.confidence,
-        verdict: rawResult.verdict,
-        rationale: rawResult.rationale,
-        red_flags_detected: rawResult.red_flags_detected || [],
-        missing_elements: rawResult.missing_elements || [],
-        improvement: rawResult.improvement || rawResult.follow_up_probe,
-        follow_up_probe: rawResult.follow_up_probe,
-        ended: body.ended || rawResult.ended || false,
-        decision: body.final_decision || body.decision || rawResult.decision,
-        in_gray_zone: body.in_gray_zone || rawResult.in_gray_zone || false,
-        needs_human_review: body.needs_human_review || rawResult.needs_human_review || false,
-        
-        // 👇 NEW: Capture round info and elimination
-        round_info: body.round_info,
-        metadata: body.metadata || body.round_info,
-        eliminated: body.eliminated || false,
-        elimination_reason: body.elimination_reason || null,
-        is_probe: body.nextQuestion?.is_probe || false,
-        technical_diagnosis: rawResult.technical_diagnosis || rawResult.diagnosis || {}
-      };
-
-      // Capture feedback/improvement suggestions
-      if (result.improvement) {
-        setLastFeedback(result.improvement);
-      } else if (result.follow_up_probe) {
-        setLastFeedback(result.follow_up_probe);
-      }
-
-      // Update performance metrics if provided
-      if (body.performance_metrics) {
-        setPerformanceMetrics(body.performance_metrics);
-      }
-
-      // Add to history
-      setHistory((h) => [...h, { q: currentQuestion, a: candidateAnswer, result }]);
-
-      // 👇 NEW: Handle elimination immediately
-      if (result.eliminated || body.eliminated) {
-        console.log("❌ ELIMINATED:", result.elimination_reason || body.elimination_reason);
-        
-        const eliminationDecision = {
-          verdict: "reject",
-          confidence: 0.95,
-          reason: result.elimination_reason || body.elimination_reason || "Eliminated due to performance",
-          eliminated: true,
-          performanceMetrics: body.round_info?.round_history || body.performance_metrics,
-        };
-        
-        setFinalDecision(eliminationDecision);
-        setCurrentQuestion(null);
-        setStage("done");
-        localStorage.removeItem("active_interview_session");
-        return result;
-      }
-
-      // Check if interview ended (completion)
-      if (result.ended || body.is_final) {
-        const decision = result.decision || body.final_decision || body.result?.parsed || body.decision;
-        
-        console.log("🏁 Interview Ended. Final Decision Data:", decision);
-        
-        // 👇 NEW: Enhance decision with round history if available
-        if (decision && body.round_info?.round_history) {
-          decision.performanceMetrics = body.round_info.round_history;
-        }
-        
-        setFinalDecision(decision);
-        setCurrentQuestion(null);
-        setStage("done");
-      } else {
-        // Get next question
-        const nextQuestionData = body.nextQuestion || body.next_question || body.parsed;
-
-        if (nextQuestionData && nextQuestionData.question !== "Interview Complete") {
-          const backendId = nextQuestionData.qaId || nextQuestionData.questionId;
-
-          const normalizedNext: InterviewQuestion = {
-            questionId: backendId || `q_${Date.now()}`,
-            questionText: nextQuestionData.question || nextQuestionData.questionText ||
-              nextQuestionData.followup_question || nextQuestionData.follow_up_question || "",
-            type: normalizeType(nextQuestionData.type),
-            target_project: nextQuestionData.target_project,
-            technology_focus: nextQuestionData.technology_focus,
-            expectedAnswerType: nextQuestionData.expected_answer_type || nextQuestionData.expectedAnswerType || "medium",
-            difficulty: nextQuestionData.difficulty || "hard",
-            ideal_outline: nextQuestionData.ideal_answer_outline || nextQuestionData.ideal_outline || "",
-            red_flags: nextQuestionData.red_flags || [],
-            confidence: nextQuestionData.confidence,
-            
-            // 👇 NEW: Preserve probe flag and round info
-            is_probe: nextQuestionData.is_probe || false,
-            round: nextQuestionData.round || body.round_info?.current || "screening",
-          };
-
-          // Preserve raw payload so UI can access nested challenge/testcases
-          setCurrentQuestion({
-            ...normalizedNext,
-            raw: nextQuestionData,
-            coding_challenge: nextQuestionData.coding_challenge || nextQuestionData.challenge || nextQuestionData
-          });
-          setStage("running");
-        } else if (result.ended) {
-          setStage("done");
-          setCurrentQuestion(null);
-        } else {
-          setCurrentQuestion(null);
-          setStage("done");
-        }
-      }
-
-      return result;
-
-    } catch (err: any) {
-      setError(err.message || String(err));
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  },
-  [sessionId, currentQuestion, buildConversationFromHistory, buildQuestionHistory, resumeParsed, token, getAuthHeaders]
-);
-// hooks/useInterview.tsx
-
-const resumeSession = useCallback(async (storedSessionId: string) => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      console.log("🔄 Resuming session:", storedSessionId);
-      const res = await fetch(`${API}/interview/session/${storedSessionId}`, {
-         headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (!res.ok) {
-         localStorage.removeItem("active_interview_session");
-         throw new Error("Session invalid");
-      }
-
-      const data = await res.json();
-      setSessionId(data.sessionId);
-      setStage(data.stage);
-      
-      // 1. Map History
-      if (data.history) {
-        setHistory(data.history.map((h: any) => ({
-             q: { 
-                 // Fix: Ensure we grab the ID from history items too
-                 questionId: h.qaId || h.questionId || h.id, 
-                 questionText: h.question, 
-                 type: h.type,
-                 target_project: h.target_project 
-             }, 
-             a: h.answer,
-             result: h.result
-        })));
-      }
-
-      // 2. Map Current Question (THE FIX)
-      if (data.currentQuestion) {
-         // We look for ANY field that might hold the ID
-         const validId = data.currentQuestion.qaId || data.currentQuestion.questionId || data.currentQuestion.id || data.currentQuestion._id;
-         
-         const normalizedQuestion: InterviewQuestion = {
-             ...data.currentQuestion,
-             // FORCE the ID to exist. This prevents the "undefined" error.
-             questionId: validId, 
-             qaId: validId, // Set both to be safe
-             
-             // Map other fields carefully
-             questionText: data.currentQuestion.question || data.currentQuestion.questionText || "",
-             type: data.currentQuestion.type || "conceptual",
-             expectedAnswerType: data.currentQuestion.expected_answer_type || data.currentQuestion.expectedAnswerType || "medium",
-             raw: data.currentQuestion,
-             coding_challenge: data.currentQuestion.coding_challenge || data.currentQuestion.challenge
-         };
-
-         console.log("✅ Hydrated Question ID:", normalizedQuestion.questionId);
-         setCurrentQuestion(normalizedQuestion);
-      }
-    } catch (e) {
-      console.error("Resume error:", e);
-      setError("Could not restore session.");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-  const endInterview = useCallback(async (reason?: string, markRejected = false) => {
-    setError(null);
-
-    // best-effort: report violation/event before ending if reason present
-    if (reason) {
+    ) => {
       try {
-        await reportViolation(reason);
-      } catch (e) {
-        console.warn("reportViolation failed before endInterview", e);
-      }
-    }
+        setLoading(true);
+        setError(null);
+        setFinalDecision(null);
+        setLastFeedback(null);
+        setPerformanceMetrics(null);
 
-    if (!token) {
-      setError("Please log in to end the interview.");
-      setStage("done");
-      setCurrentQuestion(null);
-      return;
-    }
-
-    if (!sessionId) {
-      setStage("done");
-      setCurrentQuestion(null);
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API}/interview/end`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ sessionId, reason: reason ?? null, terminated_by_violation: !!markRejected }),
-      });
-
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        console.warn("endInterview error:", body);
-      } else {
-        // if backend returned a decision, save it
-        if (body && body.finalDecisionRef) {
-          setFinalDecision({ ref: body.finalDecisionRef, reason: reason ?? null, terminated_by_violation: !!markRejected });
-        } else if (body && body.session && body.session.finalVerdict) {
-          setFinalDecision({ verdict: body.session.finalVerdict, reason: body.session.finalReason });
+        if (!token) {
+          throw new Error("Please login first.");
         }
+
+        /* -------------------------- HYDRATION MODE ------------------------- */
+
+        if (existingSessionId && existingQuestionData) {
+          setSessionId(existingSessionId);
+          setCurrentQuestion(normalizeQuestion(existingQuestionData));
+          setStage("running");
+          return;
+        }
+
+        if (!resumeParsed && !resumeFileUrl) {
+          throw new Error("Please upload your resume first.");
+        }
+
+        const payload = {
+          resume_summary: resumeParsed?.summary || "",
+          parsed_resume: resumeParsed || {},
+          retrieved_chunks: [],
+          allow_pii: false,
+          role_title:
+            config?.role_title ||
+            jobTitle ||
+            "Software Engineer",
+          company_style:
+            config?.company_style || "FAANG",
+          difficulty,
+          techStack,
+          ...(resumeFileUrl && {
+            resume_url: resumeFileUrl,
+          }),
+        };
+
+        const body = await apiRequest<any>("/interview/start", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        const newSessionId =
+          body?.sessionId || body?.session_id;
+
+        if (newSessionId) {
+          setSessionId(newSessionId);
+          localStorage.setItem(
+            SESSION_STORAGE_KEY,
+            newSessionId
+          );
+        }
+
+        const questionData =
+          body?.firstQuestion ||
+          body?.question ||
+          body?.data?.question ||
+          body?.parsed;
+
+        if (questionData) {
+          setCurrentQuestion(normalizeQuestion(questionData));
+          setStage("running");
+        }
+
+        setHistory([]);
+      } catch (err: any) {
+        setError(err.message || "Failed to start interview");
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.warn("endInterview network error:", e);
-    } finally {
-      setStage("done");
-      setCurrentQuestion(null);
-      localStorage.removeItem("active_interview_session");
-    }
-  }, [sessionId, token, getAuthHeaders, reportViolation]);
+    },
+    [
+      token,
+      resumeParsed,
+      resumeFileUrl,
+      apiRequest,
+    ]
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                                FETCH HINT                                */
+  /* ------------------------------------------------------------------------ */
+
+  const fetchHint = useCallback(
+    async (
+      questionText: string,
+      type: string,
+      currentAnswer = ""
+    ) => {
+      if (!sessionId || !currentQuestion?.questionId) {
+        return null;
+      }
+
+      try {
+        const data = await apiRequest<any>(
+          "/interview/hint",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              sessionId,
+              questionId: currentQuestion.questionId,
+              questionText,
+              type,
+              currentAnswer,
+            }),
+          }
+        );
+
+        return data?.hint || null;
+      } catch (err) {
+        console.error("Hint fetch error:", err);
+        return null;
+      }
+    },
+    [apiRequest, currentQuestion, sessionId]
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                               SUBMIT ANSWER                              */
+  /* ------------------------------------------------------------------------ */
+
+  const submitAnswer = useCallback(
+    async (candidateAnswerOrPayload: any) => {
+      if (!token) {
+        setError("Please login first.");
+        return null;
+      }
+
+      if (!sessionId || !currentQuestion) {
+        setError("Interview session missing.");
+        return null;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const payloadData =
+          typeof candidateAnswerOrPayload === "string"
+            ? {
+                answer: candidateAnswerOrPayload,
+              }
+            : candidateAnswerOrPayload;
+
+        const candidateAnswer =
+          payloadData?.answer ||
+          payloadData?.candidateAnswer ||
+          "";
+
+        const conversation = buildConversation();
+
+        conversation.push({
+          role: "assistant",
+          text: currentQuestion.questionText,
+        });
+
+        conversation.push({
+          role: "user",
+          text: candidateAnswer,
+        });
+
+        const payload = {
+          sessionId,
+          qaId: currentQuestion.questionId,
+          questionId: currentQuestion.questionId,
+          questionText: currentQuestion.questionText,
+          ideal_outline:
+            currentQuestion.ideal_outline ||
+            currentQuestion.ideal_answer_outline ||
+            "",
+
+          candidateAnswer,
+          candidate_answer: candidateAnswer,
+
+          resume_summary: resumeParsed?.summary || "",
+          retrieved_chunks: [],
+
+          conversation,
+          question_history: buildQuestionHistory(),
+
+          allow_pii: false,
+
+          question_type:
+            payloadData?.question_type || "text",
+
+          code_execution_result:
+            payloadData?.code_execution_result || null,
+
+          whiteboard_elements:
+            payloadData?.whiteboard_elements || null,
+
+          whiteboard_snapshot:
+            payloadData?.whiteboard_snapshot || null,
+
+          user_time_complexity:
+            payloadData?.user_time_complexity || null,
+
+          user_space_complexity:
+            payloadData?.user_space_complexity || null,
+
+          playback_history:
+            payloadData?.playback_history || null,
+        };
+
+        const body = await apiRequest<any>(
+          "/interview/answer",
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const rawResult =
+          body?.result ||
+          body?.validated ||
+          body;
+
+        const result: InterviewAnswerResult = {
+          score:
+            rawResult?.overall_score ||
+            rawResult?.score,
+
+          overall_score:
+            rawResult?.overall_score ||
+            rawResult?.score,
+
+          rubricScores:
+            rawResult?.rubric_scores ||
+            rawResult?.rubricScores,
+
+          dimension_scores:
+            rawResult?.dimension_scores,
+
+          confidence: rawResult?.confidence,
+          verdict: rawResult?.verdict,
+          rationale: rawResult?.rationale,
+
+          red_flags_detected:
+            rawResult?.red_flags_detected || [],
+
+          missing_elements:
+            rawResult?.missing_elements || [],
+
+          improvement:
+            rawResult?.improvement ||
+            rawResult?.follow_up_probe,
+
+          follow_up_probe:
+            rawResult?.follow_up_probe,
+
+          ended:
+            body?.ended ||
+            rawResult?.ended ||
+            false,
+
+          decision:
+            body?.final_decision ||
+            body?.decision ||
+            rawResult?.decision,
+
+          in_gray_zone:
+            body?.in_gray_zone ||
+            rawResult?.in_gray_zone ||
+            false,
+
+          needs_human_review:
+            body?.needs_human_review ||
+            rawResult?.needs_human_review ||
+            false,
+
+          round_info: body?.round_info,
+          metadata: body?.metadata,
+
+          eliminated:
+            body?.eliminated || false,
+
+          elimination_reason:
+            body?.elimination_reason || null,
+
+          is_probe:
+            body?.nextQuestion?.is_probe || false,
+
+          technical_diagnosis:
+            rawResult?.technical_diagnosis ||
+            rawResult?.diagnosis ||
+            {},
+        };
+
+        setHistory((prev) => [
+          ...prev,
+          {
+            q: currentQuestion,
+            a: candidateAnswer,
+            result,
+          },
+        ]);
+
+        if (result?.improvement) {
+          setLastFeedback(result.improvement);
+        }
+
+        if (body?.performance_metrics) {
+          setPerformanceMetrics(body.performance_metrics);
+        }
+
+        /* ----------------------------- ELIMINATION ---------------------------- */
+
+        if (result?.eliminated) {
+          setFinalDecision({
+            verdict: "reject",
+            eliminated: true,
+            reason:
+              result.elimination_reason ||
+              "Performance threshold not met",
+          });
+
+          setCurrentQuestion(null);
+          setStage("done");
+
+          localStorage.removeItem(
+            SESSION_STORAGE_KEY
+          );
+
+          return result;
+        }
+
+        /* ------------------------------ COMPLETED ----------------------------- */
+
+        if (result?.ended || body?.is_final) {
+          setFinalDecision(
+            result?.decision ||
+              body?.final_decision ||
+              body?.decision ||
+              null
+          );
+
+          setCurrentQuestion(null);
+          setStage("done");
+
+          localStorage.removeItem(
+            SESSION_STORAGE_KEY
+          );
+
+          return result;
+        }
+
+        /* --------------------------- NEXT QUESTION --------------------------- */
+
+        const nextQuestionData =
+          body?.nextQuestion ||
+          body?.next_question ||
+          body?.parsed;
+
+        if (nextQuestionData) {
+          setCurrentQuestion(
+            normalizeQuestion(nextQuestionData)
+          );
+
+          setStage("running");
+        }
+
+        return result;
+      } catch (err: any) {
+        setError(err.message || "Answer submit failed");
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      token,
+      sessionId,
+      currentQuestion,
+      resumeParsed,
+      buildConversation,
+      buildQuestionHistory,
+      apiRequest,
+    ]
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                              RESUME SESSION                              */
+  /* ------------------------------------------------------------------------ */
+
+  const resumeSession = useCallback(
+    async (storedSessionId: string) => {
+      if (!token) return;
+
+      try {
+        setLoading(true);
+
+        const data = await apiRequest<any>(
+          `/interview/session/${storedSessionId}`,
+          {
+            method: "GET",
+          }
+        );
+
+        setSessionId(data?.sessionId);
+        setStage(data?.stage || "running");
+
+        if (data?.history) {
+          setHistory(
+            data.history.map((item: any) => ({
+              q: normalizeQuestion(item),
+              a: item?.answer,
+              result: item?.result,
+            }))
+          );
+        }
+
+        if (data?.currentQuestion) {
+          setCurrentQuestion(
+            normalizeQuestion(data.currentQuestion)
+          );
+        }
+      } catch (err) {
+        console.error("Session restore failed", err);
+
+        localStorage.removeItem(
+          SESSION_STORAGE_KEY
+        );
+
+        setError("Could not restore session.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token, apiRequest]
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                               END INTERVIEW                              */
+  /* ------------------------------------------------------------------------ */
+
+  const endInterview = useCallback(
+    async (
+      reason?: string,
+      markRejected = false
+    ) => {
+      try {
+        setError(null);
+
+        if (reason) {
+          await reportViolation(reason).catch(() => null);
+        }
+
+        if (!sessionId) {
+          setStage("done");
+          setCurrentQuestion(null);
+          return;
+        }
+
+        const body = await apiRequest<any>(
+          "/interview/end",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              sessionId,
+              reason: reason || null,
+              terminated_by_violation: markRejected,
+            }),
+          }
+        );
+
+        if (body?.finalDecisionRef) {
+          setFinalDecision({
+            ref: body.finalDecisionRef,
+            reason,
+          });
+        }
+      } catch (err) {
+        console.error("End interview failed", err);
+      } finally {
+        setStage("done");
+        setCurrentQuestion(null);
+
+        localStorage.removeItem(
+          SESSION_STORAGE_KEY
+        );
+      }
+    },
+    [apiRequest, reportViolation, sessionId]
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*                                  EXPORTS                                 */
+  /* ------------------------------------------------------------------------ */
 
   return {
     sessionId,
     stage,
     currentQuestion,
-    lastFeedback,
-    performanceMetrics,
     history,
     loading,
     error,
+
     resumeParsed,
     resumeFileUrl,
+
+    lastFeedback,
+    performanceMetrics,
     finalDecision,
+
     onResumeReady,
     startInterview,
     submitAnswer,
     endInterview,
-    reportViolation,      // <-- expose this so components can call it directly if needed
-    setResumeParsed,
-    setError,
+    reportViolation,
     fetchHint,
     resumeSession,
+
+    setResumeParsed,
+    setError,
   };
 }

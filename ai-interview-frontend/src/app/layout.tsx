@@ -3,7 +3,7 @@ import "./globals.css";
 import React from "react";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./components/theme-provider";
-
+import ProtectedRoute from "./components/ProtectedRoute";
 export const metadata = {
   title: "AI Interview",
   description: "Upload resume and practice interviews",
@@ -23,7 +23,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           defaultTheme="system"
           enableSystem
         >
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ProtectedRoute>
+            {children}
+            </ProtectedRoute>
+            </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

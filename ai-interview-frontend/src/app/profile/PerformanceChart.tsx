@@ -45,61 +45,58 @@ export default function PerformanceChart({ sessions }: Props) {
 
       <div className="w-full h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-  <LineChart
-    data={chartData}
-    margin={{ top: 20, right: 30, left: 10, bottom: 30 }}
-  >
-    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <LineChart
+            data={chartData}
+            margin={{ top: 20, right: 30, left: 10, bottom: 30 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
 
-    {/* X Axis */}
-    <XAxis
-  dataKey="session"
-  interval={Math.ceil(chartData.length / 6)}
-  tick={{ fontSize: 12 }}
-/>
+            {/* X Axis */}
+            <XAxis
+              dataKey="session"
+              interval={Math.ceil(chartData.length / 6)}
+              tick={{ fontSize: 12 }}
+            />
 
+            {/* Y Axis */}
+            <YAxis
+              domain={[0.5, 1]}
+              ticks={[0.5, 0.6, 0.7, 0.8, 0.9, 1]}
+              tickFormatter={(v) => v.toFixed(2)}
+            />
 
-    {/* Y Axis */}
-    <YAxis
-  domain={[0.5, 1]}
-  ticks={[0.5, 0.6, 0.7, 0.8, 0.9, 1]}
-  tickFormatter={(v) => v.toFixed(2)}
-/>
+            <Tooltip />
+            <Legend />
 
+            <Line
+              type="monotone"
+              dataKey="Screening"
+              stroke="#2563eb"
+              strokeWidth={3}
+              dot={{ r: 3 }}
+              connectNulls
+            />
 
-    <Tooltip />
-    <Legend />
+            <Line
+              type="monotone"
+              dataKey="Technical"
+              stroke="#111827"
+              strokeWidth={3}
+              dot={{ r: 3 }}
+              connectNulls
+            />
 
-    <Line
-  type="monotone"
-  dataKey="Screening"
-  stroke="#2563eb"
-  strokeWidth={3}
-  dot={{ r: 3 }}
-  connectNulls
-/>
+            <Line
+              type="monotone"
+              dataKey="Behavioral"
+              stroke="#dc2626"
+              strokeWidth={3}
+              dot={{ r: 3 }}
+              connectNulls
+            />
 
-<Line
-  type="monotone"
-  dataKey="Technical"
-  stroke="#111827"
-  strokeWidth={3}
-  dot={{ r: 3 }}
-  connectNulls
-/>
-
-<Line
-  type="monotone"
-  dataKey="Behavioral"
-  stroke="#dc2626"
-  strokeWidth={3}
-  dot={{ r: 3 }}
-  connectNulls
-/>
-
-  </LineChart>
-</ResponsiveContainer>
-
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

@@ -1,7 +1,18 @@
 "use client";
 
-import { PerformanceData } from "../page";
 import { TrendingUp, TrendingDown, Target, Lightbulb } from "lucide-react";
+
+// Define the interface here if it's not exporting correctly from page.tsx
+export interface PerformanceData {
+  strongAreas: string[];
+  weakAreas: Array<{
+    skill: string;
+    severity: "High" | "Medium" | "Low";
+  }>;
+  consistency: number;
+  variance: number;
+  recommendations: string[];
+}
 
 export default function PerformanceInsights({
   insights,
@@ -39,7 +50,7 @@ export default function PerformanceInsights({
         </h3>
         <div className="flex flex-wrap gap-2">
           {insights.strongAreas.length > 0 ? (
-            insights.strongAreas.map((area, idx) => (
+            insights.strongAreas.map((area: string, idx: number) => ( // Typed parameters
               <div
                 key={idx}
                 className="px-3 py-2 rounded-lg bg-green-500/20 text-green-400 border border-green-500/30 text-sm font-medium"
@@ -61,7 +72,7 @@ export default function PerformanceInsights({
         </h3>
         <div className="space-y-2">
           {insights.weakAreas.length > 0 ? (
-            insights.weakAreas.map((area, idx) => (
+            insights.weakAreas.map((area, idx: number) => ( // Typed parameters
               <div
                 key={idx}
                 className={`bg-gray-700/50 rounded-lg p-3 border ${getSeverityColor(
@@ -139,7 +150,7 @@ export default function PerformanceInsights({
         </h3>
         <div className="space-y-2">
           {insights.recommendations.length > 0 ? (
-            insights.recommendations.map((rec, idx) => (
+            insights.recommendations.map((rec: string, idx: number) => ( // Typed parameters
               <div
                 key={idx}
                 className="bg-gray-700/50 rounded-lg p-3 border border-gray-600 flex items-start gap-3"
@@ -156,4 +167,3 @@ export default function PerformanceInsights({
     </div>
   );
 }
-

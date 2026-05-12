@@ -10,7 +10,6 @@ import {
   Loader2, 
   CheckCircle2, 
   AlertTriangle,
-  ExternalLink,
   Target,
   BookOpen,
   Video,

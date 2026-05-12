@@ -142,4 +142,3 @@ export default function SessionOverview({ session }: { session: SessionDetail })
     </div>
   );
 }
-

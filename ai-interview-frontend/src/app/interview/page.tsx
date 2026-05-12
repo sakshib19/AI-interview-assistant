@@ -839,8 +839,7 @@ export default function InterviewPage() {
     resumeSession,
     fetchHint
   } = useInterview();
-const { isListening, startListening, stopListening, transcriptBuffer, error: speechError, isSupported } = useWebSpeech();
-  const { token } = useAuth();
+const { isListening, startListening, stopListening, transcriptBuffer, error: speechError, isSupported, resetTranscript } = useWebSpeech();  const { token } = useAuth();
   const [answer, setAnswer] = useState("");
   const [showReport, setShowReport] = useState(false);
   const [roadmapTitle, setRoadmapTitle] = useState("");
@@ -2261,8 +2260,9 @@ const handleSubmitAnswer = async (e: React.FormEvent) => {
     try {
       const result = await submitAnswer(payload, currentQuestion.questionId);
 
-      // Reset State
+   // Reset State
       setAnswer("");
+      resetTranscript(); // <--- ADD THIS
       setCodeOutput(null);
       setExecutionResult(null);
       setTimeComplexity("");

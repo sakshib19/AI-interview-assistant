@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
 import Link from "next/link";
 import { Brain, Mail, Lock, User, ArrowRight, AlertCircle } from "lucide-react";
+import { Variants } from "framer-motion"
 
 export default function SignupPage() {
   const { signupUser } = useAuth();
@@ -42,10 +43,17 @@ export default function SignupPage() {
     },
   };
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
-  };
+ const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-950 relative overflow-hidden p-4">

@@ -13,7 +13,7 @@ export default function ResumePage() {
     if (loading) return; // Wait until localStorage loads
 
     if (!token) {
-      router.replace("/auth/login");
+      router.replace("/Auth/login");
     }
   }, [token, loading, router]);
 

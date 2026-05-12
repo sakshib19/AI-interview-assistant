@@ -31,8 +31,10 @@ import {
   TrendingUp,
   Target,
   Award,
-  Clock // <-- Add this right here
+  Clock,
+  LogOut // <-- Added LogOut icon
 } from "lucide-react";
+
 // --- TYPES ---
 export type DetailedRound = {
   score: number;
@@ -94,7 +96,7 @@ type RawSession = InterviewSession & {
 
 export default function ProfilePage() {
   const { fetchDashboard } = useProfile();
-  const { token } = useAuth();
+  const { token, logout } = useAuth(); // <-- Added logout from useAuth()
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -221,11 +223,22 @@ export default function ProfilePage() {
                 <LayoutDashboard className="text-[#cbe557]" size={22} />
                 <h1 className="text-xl font-bold tracking-tight">Candidate Profile</h1>
              </div>
+             
+             {/* Header Right: User Info & Logout */}
              <div className="flex items-center gap-3">
                <span className="text-sm font-medium text-neutral-400 hidden sm:block">{data.user.name || "Candidate"}</span>
                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-neutral-700 to-neutral-900 border border-white/10 flex items-center justify-center text-sm font-black text-[#cbe557] shadow-inner">
                  {data.user.name?.[0] || "C"}
                </div>
+               {/* --- LOGOUT BUTTON --- */}
+               <button
+                 onClick={logout}
+                 className="ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 text-xs font-bold hover:bg-rose-500/20 transition-colors"
+                 title="Log out"
+               >
+                 <LogOut size={14} />
+                 <span className="hidden sm:inline">Logout</span>
+               </button>
              </div>
         </div>
       </header>
