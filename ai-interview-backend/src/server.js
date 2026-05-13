@@ -38,13 +38,16 @@ const AI_EXPECTS_RAW_BASE64 = false;
 
 // ---------- MIDDLEWARE ----------
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// app.use(cors({
+//   origin: corsOrigins,
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization']
+// }));
 app.use(cors({
-  origin: corsOrigins,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: true,
+  credentials: true
 }));
-
 app.use(helmet());
 // Increased limit to 50mb to handle base64 image strings from camera
 app.use(express.json({ limit: "50mb" }));

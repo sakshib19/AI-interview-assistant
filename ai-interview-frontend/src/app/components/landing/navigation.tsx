@@ -86,7 +86,7 @@ export function Navigation() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push("/auth/login")}
+              onClick={() => router.push("/Auth/login")}
               className="text-neutral-400 hover:text-white hover:bg-transparent text-sm"
             >
               Log in
