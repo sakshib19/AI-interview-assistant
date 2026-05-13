@@ -17,7 +17,7 @@ const YAML = require('yamljs');
 const { signupUser, loginUser, verifyToken } = require("../Controller/auth");
 
 const app = express();
-
+app.set("trust proxy", 1);
 // Import models - adjust paths as needed
 const User = require("../models/User");
 const Session = require("../models/Session");
