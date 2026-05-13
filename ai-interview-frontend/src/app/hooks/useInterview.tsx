@@ -253,14 +253,20 @@ export function useInterview() {
       endpoint: string,
       options: RequestInit = {}
     ): Promise<T> => {
-      const response = await fetch(`${API}${endpoint}`, {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders,
-          ...(options.headers || {}),
-        },
-      });
+const mergedHeaders: Record<string, string> = {
+  "Content-Type": "application/json",
+  ...(options.headers as Record<string, string> || {}),
+};
+
+// Only add Authorization if it is explicitly defined
+if (authHeaders?.Authorization) {
+  mergedHeaders["Authorization"] = authHeaders.Authorization;
+}
+
+const response = await fetch(`${API}${endpoint}`, {
+  ...options,
+  headers: mergedHeaders,
+});
 
       const body = await safeJson(response);
 
@@ -302,25 +308,37 @@ export function useInterview() {
   /*                              REPORT VIOLATION                            */
   /* ------------------------------------------------------------------------ */
 
-  const reportViolation = useCallback(
-    async (reason: string) => {
-      if (!sessionId) {
-        return {
-          ok: false,
-          error: "NO_SESSION",
-        };
-      }
+const reportViolation = useCallback(
+  async ({
+    reason,
+    intendedAction,
+    sessionId: passedSessionId,
+  }: {
+    reason: string;
+    intendedAction: "warning" | "terminate";
+    sessionId: string | null;
+  }) => {
+    // Use the passed sessionId, or fallback to the hook's internal sessionId
+    const activeSessionId = passedSessionId || sessionId;
 
-      return apiRequest("/interview/violation", {
-        method: "POST",
-        body: JSON.stringify({
-          sessionId,
-          reason,
-        }),
-      });
-    },
-    [apiRequest, sessionId]
-  );
+    if (!activeSessionId) {
+      return {
+        ok: false,
+        error: "NO_SESSION",
+      };
+    }
+
+    return apiRequest("/interview/violation", {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        reason,
+        intendedAction,
+      }),
+    });
+  },
+  [apiRequest, sessionId]
+);
 
   /* ------------------------------------------------------------------------ */
   /*                              START INTERVIEW                             */
@@ -777,8 +795,7 @@ export function useInterview() {
   /* ------------------------------------------------------------------------ */
   /*                               END INTERVIEW                              */
   /* ------------------------------------------------------------------------ */
-
-  const endInterview = useCallback(
+const endInterview = useCallback(
     async (
       reason?: string,
       markRejected = false
@@ -786,8 +803,13 @@ export function useInterview() {
       try {
         setError(null);
 
+        // ✅ Updated to pass the object instead of just a string
         if (reason) {
-          await reportViolation(reason).catch(() => null);
+          await reportViolation({
+            reason: reason,
+            intendedAction: markRejected ? "terminate" : "warning", 
+            sessionId: sessionId || null
+          }).catch(() => null);
         }
 
         if (!sessionId) {
@@ -827,7 +849,6 @@ export function useInterview() {
     },
     [apiRequest, reportViolation, sessionId]
   );
-
   /* ------------------------------------------------------------------------ */
   /*                                  EXPORTS                                 */
   /* ------------------------------------------------------------------------ */

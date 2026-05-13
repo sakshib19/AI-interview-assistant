@@ -176,7 +176,7 @@ export const InterviewRunningSection = (props: any) => {
               <div className="relative flex items-center gap-3 bg-black/40 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 shadow-xl">
                 <Sparkles size={16} className="text-[#cbe557] animate-pulse" />
                 <span className="text-xs font-black tracking-widest text-[#cbe557] uppercase">
-                  Question {currentQuestion?.questionNumber || (history.filter(h => h.q?.questionId !== currentQuestion?.questionId).length + 1)}
+                  Question {currentQuestion?.questionNumber || (history.filter((h: any) => h.q?.questionId !== currentQuestion?.questionId).length + 1)}
                 </span>
               </div>
             </div>
@@ -546,7 +546,7 @@ export const InterviewRunningSection = (props: any) => {
                     onClick={() => {
                       if (excalidrawAPI) {
                         excalidrawAPI.resetScene();
-                        whiteboardElementsRef.current = [];
+                        setWhiteboardElements([]);
                       }
                     }}
                     className="group/clear text-xs px-4 py-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 font-black transition-all hover:scale-105 active:scale-95 shadow-sm border border-red-500/20 flex items-center gap-2"
@@ -703,7 +703,7 @@ export const InterviewRunningSection = (props: any) => {
                         <div className="ml-auto flex items-center gap-2 text-xs text-neutral-400">
                           <Zap size={12} className="text-[#cbe557]" />
                           <span className="font-bold text-[#cbe557]">
-                            {transcriptBuffer.split(' ').filter(w => w).length}
+                            {transcriptBuffer.split(' ').filter((w: string) => w).length}
                           </span>
                           words
                         </div>
@@ -1178,7 +1178,7 @@ export const InterviewFinalSection = (props: any) => {
                       Complete Transcript
                     </h3>
                     <div className="grid gap-8">
-                      {history.map((h, idx) => (
+                      {history.map((h: any, idx: number) => (
                         <TranscriptCard key={idx} h={h} idx={idx} renderScoreBadge={renderScoreBadge} />
                       ))}
                     </div>

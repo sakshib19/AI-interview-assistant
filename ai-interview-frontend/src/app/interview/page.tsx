@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useWebSpeech } from "../hooks/useWebSpeech";
 import Link from "next/link";
 import jsPDF from "jspdf";
+// @ts-ignore
 import "@excalidraw/excalidraw/index.css";
 // import { exportToBlob } from "@excalidraw/excalidraw";
 import autoTable from "jspdf-autotable";
@@ -1335,11 +1336,11 @@ const handleRunCode = async () => {
 
     const allPassed = raw?.all_passed === true;
 
-    setExecutionResult({
+setExecutionResult({
       cases: normalizedCases,
       summary: {
         total: normalizedCases.length,
-        passed: normalizedCases.filter(c => c.success).length,
+        passed: normalizedCases.filter((c: any) => c.success).length, // Added (c: any)
       },
     });
 
@@ -1347,8 +1348,8 @@ const handleRunCode = async () => {
 
     setCodeOutput(
       normalizedCases
-        .map(
-          c =>
+       .map(
+          (c: any) => // Added (c: any)
             `Test ${c.index + 1}: ${c.success ? "✅ PASSED" : "❌ FAILED"}\n` +
             `Input: ${c.input}\n` +
             `Expected: ${c.expected}\n` +
@@ -1389,8 +1390,7 @@ const reportViolationWrapper = useCallback(
 
     let serverResp: any = null;
     try {
-      serverResp = await reportViolation(reason, intendedAction, sessionId);
-      console.info("[VIOLATION] serverResp:", serverResp);
+serverResp = await reportViolation({ reason, intendedAction, sessionId });      console.info("[VIOLATION] serverResp:", serverResp);
     } catch (err) {
       console.error("Error reporting violation to server:", err);
     }
@@ -2258,8 +2258,7 @@ const handleSubmitAnswer = async (e: React.FormEvent) => {
     }
 
     try {
-      const result = await submitAnswer(payload, currentQuestion.questionId);
-
+const result = await submitAnswer({ payload, questionId: currentQuestion.questionId });
    // Reset State
       setAnswer("");
       resetTranscript(); // <--- ADD THIS
@@ -3171,8 +3170,7 @@ useEffect(() => {
     let y = 55;
 
     // --- SECTION 1: METRICS ---
-    const score = Math.round((reportData.overall?.score || metricsData.average_score || 0) * 100);
-    const duration = reportData.meta?.duration_minutes || "N/A";
+const score = Math.round((reportData.overall?.score || (metricsData as any).average_score || 0) * 100);    const duration = reportData.meta?.duration_minutes || "N/A";
     const qCount = history.length;
 
     // Draw Metric Container

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+// @ts-ignore
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(

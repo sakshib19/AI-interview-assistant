@@ -9,7 +9,7 @@ import {
 import { DayButton, DayPicker, getDefaultClassNames } from 'react-day-picker'
 
 import { cn } from '../../lib/utils'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants } from './button'
 
 function Calendar({
   className,
@@ -84,7 +84,8 @@ function Calendar({
             : 'rounded-md pl-2 pr-1 flex items-center gap-1 text-sm h-8 [&>svg]:text-muted-foreground [&>svg]:size-3.5',
           defaultClassNames.caption_label,
         ),
-        table: 'w-full border-collapse',
+        // FIXED: Replaced 'table' with 'month_grid' for react-day-picker v9 compatibility
+        month_grid: 'w-full border-collapse',
         weekdays: cn('flex', defaultClassNames.weekdays),
         weekday: cn(
           'text-muted-foreground rounded-md flex-1 font-normal text-[0.8rem] select-none',
