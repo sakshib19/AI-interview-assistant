@@ -24,9 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
         >
           <AuthProvider>
-            <ProtectedRoute>
+            {/* <ProtectedRoute> */}
             {children}
-            </ProtectedRoute>
+            {/* </ProtectedRoute> */}
             </AuthProvider>
         </ThemeProvider>
       </body>
