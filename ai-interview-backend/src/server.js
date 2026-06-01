@@ -858,6 +858,30 @@ round: metadata.current_round || "screening",
 // REPLACE YOUR EXISTING app.post("/interview/answer" ...) WITH THIS BLOCK
 // =========================================================================
 app.post("/interview/answer", requireAuth, async (req, res) => {
+  // ⏱️ START ROOT TIMER (Entry point)
+  const routeStartTime = process.hrtime.bigint();
+  
+  // ⏱️ LATENCY TRACKING VARIABLES
+  let scoreAnswerMs = 0;
+  let probeMs = 0;
+  let generateQuestionMs = 0;
+
+  // Helper function to log latency metrics before response
+  const logLatencyMetric = (round) => {
+    const totalMs = Number((process.hrtime.bigint() - routeStartTime) / BigInt(1_000_000));
+    const metric = {
+      event: "interview_latency",
+      session_id: sessionId,
+      round: round || roundInfo?.current_round || "unknown",
+      score_answer_ms: scoreAnswerMs,
+      probe_ms: probeMs,
+      generate_question_ms: generateQuestionMs,
+      total_ms: totalMs,
+      timestamp: new Date().toISOString()
+    };
+    console.log(JSON.stringify(metric));
+  };
+  
   try {
     console.log("💬 Processing answer for session:", req.body.sessionId);
 
@@ -944,7 +968,11 @@ const hintUsed = qaRec.metadata?.hint_used || false;
     };
     console.log(`📤 Sending Score Payload. Type: ${questionType}, Has Whiteboard: ${!!whiteboardData}`);
 
+    // ⏱️ START: score_answer timing
+    const scoreAnswerStartTime = process.hrtime.bigint();
     const aiScoreResp = await callAiScoreAnswer(scorePayload);
+    // ⏱️ STOP: score_answer timing
+    scoreAnswerMs = Number((process.hrtime.bigint() - scoreAnswerStartTime) / BigInt(1_000_000));
     const validated = aiScoreResp.validated || aiScoreResp.validation || {};
     const overallScore = validated.overall_score ?? validated.score ?? 0;
     const isProbe = aiScoreResp.is_probe || false;
@@ -1004,7 +1032,12 @@ const hintUsed = qaRec.metadata?.hint_used || false;
             allow_pii: !!req.body.allow_pii,
           };
 
+          
+          // ⏱️ START: probe timing
+          const probeStartTime = process.hrtime.bigint();
           const probeResp = await callAiProbe(probePayload);
+          // ⏱️ STOP: probe timing
+          probeMs = Number((process.hrtime.bigint() - probeStartTime) / BigInt(1_000_000));
           const parsedProbe = probeResp.parsed || {};
 const parentExpectedType = qaRec.expectedAnswerType; // 🔥 inherit parent
 
@@ -1053,7 +1086,11 @@ const newQa = await createQARecordDB(
             options: { temperature: 0.1 },
           };
 
+                 // ⏱️ START: generate_question timing
+          const generateQuestionStartTime = process.hrtime.bigint();
           const genResp = await callAiGenerateQuestion(genPayload);
+          // ⏱️ STOP: generate_question timing
+          generateQuestionMs = Number((process.hrtime.bigint() - generateQuestionStartTime) / BigInt(1_000_000));
 
           // 🔥 UPDATE DB WITH NEW PROGRESS IF AVAILABLE
           if (genResp.metadata) {
